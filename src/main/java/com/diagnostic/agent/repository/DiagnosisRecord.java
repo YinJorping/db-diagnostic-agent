@@ -42,13 +42,13 @@ public class DiagnosisRecord {
     void onCreate() {
         this.createdAt = Instant.now();
         if (this.status == null) {
-            this.status = "IN_PROGRESS";
+            this.status = com.diagnostic.agent.agent.DiagnosisStatus.IN_PROGRESS;
         }
     }
 
     public DiagnosisRecord(String sessionId, String problem) {
         this.sessionId = sessionId;
         this.problem = problem;
-        this.status = "IN_PROGRESS";
+        this.status = com.diagnostic.agent.agent.DiagnosisStatus.IN_PROGRESS;
     }
 }

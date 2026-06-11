@@ -1,5 +1,8 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.memory.ChatMemoryStore;
+import com.diagnostic.agent.memory.MessageType;
+import com.diagnostic.agent.memory.StoredMessage;
 import com.diagnostic.agent.repository.DiagnosisRecord;
 import com.diagnostic.agent.repository.DiagnosisRecordRepository;
 import com.diagnostic.agent.repository.Session;
@@ -8,6 +11,8 @@ import com.diagnostic.agent.tool.RiskLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 @Component
 public class OrchestratorAgent {
@@ -21,17 +26,20 @@ public class OrchestratorAgent {
     private final AgentRouter agentRouter;
     private final PromptService promptService;
     private final LlmClient llmClient;
+    private final ChatMemoryStore memoryStore;
 
     public OrchestratorAgent(SessionRepository sessionRepository,
                              DiagnosisRecordRepository recordRepository,
                              AgentRouter agentRouter,
                              PromptService promptService,
-                             LlmClient llmClient) {
+                             LlmClient llmClient,
+                             ChatMemoryStore memoryStore) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.agentRouter = agentRouter;
         this.promptService = promptService;
         this.llmClient = llmClient;
+        this.memoryStore = memoryStore;
     }
 
     public DiagnosisResult diagnose(String sessionId, String problem) {
@@ -41,6 +49,10 @@ public class OrchestratorAgent {
         try {
             DiagnosisResult result = executeDiagnosis(problem);
             completeRecord(record, result);
+            memoryStore.addAll(sessionId, List.of(
+                    StoredMessage.of(MessageType.USER, problem),
+                    StoredMessage.of(MessageType.ASSISTANT, result.getSummary())
+            ));
             return result;
         } catch (Exception e) {
             log.error("诊断失败: sessionId={}, problem={}", sessionId, problem, e);
