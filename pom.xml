@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ============================================================
+         项目：数据库诊断 AI Agent 平台 (Database Diagnostic AI Agent Platform)
+         描述：Orchestrator + 多专家 Agent 协作的智能数据库诊断系统
+         语言：Java 21
+    ============================================================ -->
+
+    <!--
+        ===================== 父 POM：Spring Boot 3.3.5 =====================
+        版本选择原因：
+        - Spring Boot 3.3.x 是 3.x 系列成熟稳定线，生产广泛使用
+        - 兼容 Java 21 LTS
+        - 与 IntelliJ IDEA 2023.2 兼容（内置 Spring Initializr 支持）
+        - 不追 3.4+ 避免首次引入的不稳定因素
+        - 3.3.x 提供 Spring Data JPA / Redis / Flyway / Actuator 的成熟自动配置
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.diagnostic</groupId>
+    <artifactId>db-diagnostic-agent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>DB Diagnostic Agent</name>
+    <description>Database Diagnostic AI Agent Platform — Orchestrator + Multi-Expert Agent Collaboration</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!--
+            ===================== 第三方版本统一管理 =====================
+            原则：
+            1. 能由 spring-boot-starter-parent 管理的，不手写版本号
+            2. 非 Spring 生态的独立声明版本号
+            3. 版本号写死（不用范围），保证构建可重复
+        -->
+
+        <!-- LangChain4j：AI Agent 编排框架 -->
+        <!-- 版本选择：≥1.10.0 是 AGENTS.md 硬性要求，该版本提供了稳定的 Agent/Tool/Memory 抽象 -->
+        <langchain4j.version>1.10.0</langchain4j.version>
+
+        <!-- pgvector：PostgreSQL 向量存储 JDBC 驱动 -->
+        <!-- 版本选择：0.1.6 支持 PostgreSQL 15/16 + pgvector 0.7+，无需 C 扩展编译 -->
+        <pgvector.version>0.1.6</pgvector.version>
+
+        <!-- PDFBox：PDF 文档解析（RAG 知识库摄入） -->
+        <!-- 版本选择：3.0.3 修复了 CVE-2023-xxx，兼容 Java 21 -->
+        <pdfbox.version>3.0.3</pdfbox.version>
+
+        <!-- Testcontainers：集成测试容器编排 -->
+        <!-- 版本选择：1.20.4 支持 Docker Desktop 4.x，与 Spring Boot 3.3.x 兼容 -->
+        <testcontainers.version>1.20.4</testcontainers.version>
+
+        <!-- JaCoCo Plugin：代码覆盖率 -->
+        <jacoco.version>0.8.12</jacoco.version>
+    </properties>
+
+    <!-- ============================================================
+         Testcontainers BOM：统一管理所有 testcontainers 模块版本
+    ============================================================ -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- ============================================================
+             [1] Spring Boot 核心启动器
+             用途：REST API 层（Controller）+ 内嵌 Tomcat
+        ============================================================ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [2] Spring Data JPA（Hibernate + JPA）
+             用途：Repository 层，ORM 映射 Entity，诊断记录持久化
+             注：版本由 spring-boot-starter-parent 管理
+        ============================================================ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [3] Spring Data Redis（Lettuce 客户端）
+             用途：ChatMemoryStore 会话记忆存储
+             注：不选 Jedis，Lettuce 天然异步 + 连接池，Spring Boot 默认
+        ============================================================ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [4] Spring Boot Validation
+             用途：Controller 入参校验（@Valid, @NotBlank 等 Jakarta Validation）
+        ============================================================ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [5] Spring Boot Actuator + Micrometer → Prometheus
+             用途：/actuator/health, /actuator/prometheus, 自定义指标埋点
+             注：micrometer-registry-prometheus 提供 Prometheus 格式暴露
+        ============================================================ -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [6] Flyway：数据库版本迁移
+             用途：管理 pgvector 扩展 + 表结构 + 种子数据的版本化 DDL
+        ============================================================ -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             [7] PostgreSQL JDBC Driver
+             用途：连接 PostgreSQL 数据库（含 pgvector 扩展的目标库）
+        ============================================================ -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ============================================================
+             [8] pgvector：PostgreSQL 向量扩展 JDBC 支持
+             用途：向量读写、<=> 余弦距离查询的类型映射
+        ============================================================ -->
+        <dependency>
+            <groupId>com.pgvector</groupId>
+            <artifactId>pgvector</artifactId>
+            <version>${pgvector.version}</version>
+        </dependency>
+
+        <!-- ============================================================
+             [9] LangChain4j：AI Agent 编排框架
+             用途：
+             - langchain4j  核心抽象（ChatLanguageModel, Tool, ChatMemory）
+             注：1.10.0 提供 @Tool 注解、Agent 链、ChatMemory 等生产级特性
+             Spring 集成通过 @Configuration 手动实现（不依赖 langchain4j-spring 自动配置）
+        ============================================================ -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+
+        <!-- ============================================================
+             [10] PDFBox：PDF 文档解析
+             用途：RAG 知识库摄入（诊断手册、数据库运维文档等 PDF 资料）
+             注：仅 Phase 1.5 RAG 阶段启用，当前预留依赖
+        ============================================================ -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+
+        <!-- ============================================================
+             [11] Lombok：消除样板代码
+             注：仅编译期，runtime 不打包
+        ============================================================ -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ============================================================
+             [12] Jackson JSR310（Java 8 日期时间序列化）
+             用途：LocalDateTime 等 Java 8 时间类型 JSON 序列化
+        ============================================================ -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- ============================================================
+             ==== 测试依赖 ====
+        ============================================================ -->
+
+        <!-- Spring Boot Test：基础测试框架 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers：集成测试容器 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers :: PostgreSQL（含 pgvector 镜像） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers :: Redis -->
+        <dependency>
+            <groupId>com.redis</groupId>
+            <artifactId>testcontainers-redis</artifactId>
+            <version>2.2.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- H2：本地 dev 模式替代 PostgreSQL，加速开发（runtime 而非 test，保证 spring-boot:run 可用） -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Spring Boot Maven Plugin：打包 Fat JAR + spring-boot:run -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!--
+                Maven Surefire Plugin：单元测试执行
+                注：版本由 spring-boot-starter-parent 管理
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+
+            <!--
+                Maven Failsafe Plugin：集成测试执行（*IT.java）
+                通过 mvn verify 触发（test 阶段跳过）
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+
+            <!--
+                JaCoCo：代码覆盖率
+                行覆盖率 ≥ 60% 为 Phase 1 最低门槛
+                排除：配置类、POJO 响应体、Lombok 生成代码
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.60</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                            <excludes>
+                                <exclude>com/diagnostic/config/**</exclude>
+                                <exclude>com/diagnostic/common/ApiResponse.*</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

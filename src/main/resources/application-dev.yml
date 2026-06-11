@@ -1,0 +1,55 @@
+# ============================================================
+# 开发环境配置
+# 使用 H2 内嵌数据库（免安装 PG），Flyway 关闭，Redis 本地
+# ============================================================
+spring:
+  # ---- H2 内嵌数据库（PostgreSQL 兼容模式） ----
+  datasource:
+    url: jdbc:h2:mem:dbdiagnostic;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # ---- Flyway 关闭（H2 不支持 pgvector 扩展） ----
+  flyway:
+    enabled: false
+
+  # ---- JPA：dev 用 create-drop 方便调试 ----
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  # ---- Redis（本地默认端口） ----
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # 本地开发无密码
+      password:
+      timeout: 3s
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# ---- 日志 ----
+logging:
+  level:
+    com.diagnostic: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql: TRACE   # 绑定参数可见
+
+# ---- Actuator：dev 暴露所有 ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"

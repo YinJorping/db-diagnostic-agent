@@ -1,0 +1,49 @@
+# ============================================================
+# 通用配置（所有 profile 共享）
+# ============================================================
+spring:
+  application:
+    name: db-diagnostic-agent
+  profiles:
+    active: dev
+
+  # ---- Jackson ----
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+  # ---- 通用 JPA ----
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # 生产强制 validate，DDL 由 Flyway 管理
+    properties:
+      hibernate:
+        format_sql: true
+
+# ---- 服务端口 ----
+server:
+  port: 8080
+
+# ---- Actuator（全局最小暴露，prod 再收紧） ----
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# ---- 诊断平台配置 ----
+diagnostic:
+  llm:
+    provider: mock           # Phase 1 默认 mock，Phase 2 切 deepseek/openai
+  tool:
+    timeout-seconds: 5       # Tool 执行超时
+  memory:
+    ttl-minutes: 30          # ChatMemory Redis TTL
+  workflow:
+    max-steps: 10            # 单次诊断最大步骤数

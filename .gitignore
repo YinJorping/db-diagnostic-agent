@@ -38,5 +38,8 @@ logs/
 .env.local
 .env.*.local
 
+# Claude Code
+.claude/
+
 # Testcontainers
 .testcontainers.properties
