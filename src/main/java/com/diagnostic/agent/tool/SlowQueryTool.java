@@ -53,8 +53,9 @@ public class SlowQueryTool implements Tool {
         try {
             List<Map<String, Object>> rows = querySlowQueries(limit);
             Map<String, Object> detail = analyze(rows);
+            RiskLevel risk = RiskLevel.valueOf((String) detail.get("risk"));
             long elapsed = System.currentTimeMillis() - start;
-            return ToolResult.success(getName(), buildSummary(detail), detail, elapsed);
+            return ToolResult.success(getName(), buildSummary(detail), detail, risk, elapsed);
         } catch (Exception e) {
             log.warn("SlowQueryTool 查询失败: {}", e.getMessage());
             return ToolResult.failure(getName(), mapErrorMessage(e));
@@ -131,10 +132,10 @@ public class SlowQueryTool implements Tool {
         }
 
         suggestions = dedupByAction(suggestions);
-        String risk = determineRisk(findings);
+        RiskLevel risk = determineRisk(findings);
 
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", risk);
+        detail.put("risk", risk.name());     // detail 保留 String 形式，向下兼容
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("slowQueries", rows);
@@ -149,12 +150,12 @@ public class SlowQueryTool implements Tool {
         return "LOW";
     }
 
-    private String determineRisk(List<Map<String, String>> findings) {
+    private RiskLevel determineRisk(List<Map<String, String>> findings) {
         boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
         boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return "HIGH";
-        if (hasMedium) return "MEDIUM";
-        return "LOW";
+        if (hasHigh) return RiskLevel.HIGH;
+        if (hasMedium) return RiskLevel.MEDIUM;
+        return RiskLevel.LOW;
     }
 
     // ---- 错误处理 ----

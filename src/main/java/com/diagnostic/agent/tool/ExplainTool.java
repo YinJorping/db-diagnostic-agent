@@ -64,9 +64,10 @@ public class ExplainTool implements Tool {
             String explainJson = runExplain(sql);
             JsonNode plan = parsePlan(explainJson);
             Map<String, Object> detail = analyzePlan(plan);
+            RiskLevel risk = RiskLevel.valueOf((String) detail.get("risk"));
 
             long elapsed = System.currentTimeMillis() - start;
-            return ToolResult.success(getName(), buildSummary(detail), detail, elapsed);
+            return ToolResult.success(getName(), buildSummary(detail), detail, risk, elapsed);
         } catch (Exception e) {
             log.error("ExplainTool 执行失败: sql={}", sql, e);
             return ToolResult.failure(getName(), e.getMessage());
@@ -144,9 +145,9 @@ public class ExplainTool implements Tool {
         // Rule 4: Index Scan → LOW（不产出 finding）
 
         suggestions = dedupByAction(suggestions);
-        String risk = determineRisk(findings);
+        RiskLevel risk = determineRisk(findings);
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", risk);
+        detail.put("risk", risk.name());     // detail 保留 String 形式，向下兼容
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("explainJson", plan);
@@ -204,11 +205,11 @@ public class ExplainTool implements Tool {
         return "检测到 " + findings.size() + " 个问题，风险等级 " + risk;
     }
 
-    private String determineRisk(List<Map<String, String>> findings) {
+    private RiskLevel determineRisk(List<Map<String, String>> findings) {
         boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
         boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return "HIGH";
-        if (hasMedium) return "MEDIUM";
-        return "LOW";
+        if (hasHigh) return RiskLevel.HIGH;
+        if (hasMedium) return RiskLevel.MEDIUM;
+        return RiskLevel.LOW;
     }
 }

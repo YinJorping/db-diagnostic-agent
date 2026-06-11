@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
+import com.diagnostic.agent.tool.RiskLevel;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ToolResultTest {
@@ -11,7 +13,7 @@ class ToolResultTest {
     @Test
     void successShouldSetAllFields() {
         var detail = Map.of("risk", "HIGH");
-        ToolResult result = ToolResult.success("ExplainTool", "检测到全表扫描", detail, 15L);
+        ToolResult result = ToolResult.success("ExplainTool", "检测到全表扫描", detail, RiskLevel.HIGH, 15L);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getSummary()).isEqualTo("检测到全表扫描");

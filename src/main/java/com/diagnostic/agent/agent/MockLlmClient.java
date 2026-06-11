@@ -1,9 +1,12 @@
 package com.diagnostic.agent.agent;
 
+import org.springframework.stereotype.Component;
+
 /**
  * LLM Mock 实现，关键词匹配返回预设诊断结论。
  * Phase 1 验证 Agent→Tool→LLM 闭环，Phase 2 切换为真实 API。
  */
+@Component
 public class MockLlmClient implements LlmClient {
 
     @Override
