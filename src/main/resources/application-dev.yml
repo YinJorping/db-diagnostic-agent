@@ -1,43 +1,23 @@
 # ============================================================
 # 开发环境配置
-# 使用 H2 内嵌数据库（免安装 PG），Flyway 关闭，Redis 本地
+# 使用 Testcontainers 提供 PostgreSQL 16 + pgvector，Flyway 开启
+# 注：需要本地 Docker 运行中
 # ============================================================
 spring:
-  # ---- H2 内嵌数据库（PostgreSQL 兼容模式） ----
-  datasource:
-    url: jdbc:h2:mem:dbdiagnostic;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-
-  # ---- Flyway 关闭（H2 不支持 pgvector 扩展） ----
+  # ---- Flyway 开启（pgvector 扩展 + 表 + 种子数据） ----
   flyway:
-    enabled: false
+    enabled: true
 
-  # ---- JPA：dev 用 create-drop 方便调试 ----
+  # ---- JPA ----
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate   # 表由 Flyway 管理
     show-sql: true
 
-  # ---- Redis（本地默认端口） ----
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      # 本地开发无密码
-      password:
-      timeout: 3s
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
+  # ---- 排除 Redis 自动配置（本地无 Redis 时不影响启动） ----
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
 
 # ---- 日志 ----
 logging:
