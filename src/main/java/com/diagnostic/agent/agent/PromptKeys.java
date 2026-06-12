@@ -11,6 +11,7 @@ public final class PromptKeys {
     public static final String ORCHESTRATOR_ROUTER = "orchestrator_router";
     public static final String CPU_DIAGNOSIS_SYSTEM = "cpu_diagnosis_system";
     public static final String MEMORY_DIAGNOSIS_SYSTEM = "memory_diagnosis_system";
+    public static final String JVM_DIAGNOSIS_SYSTEM = "jvm_diagnosis_system";
 
     private PromptKeys() {}
 }

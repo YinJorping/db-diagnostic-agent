@@ -190,4 +190,28 @@ class OrchestratorAgentIT {
                 .contains("CpuDiagnosisAgent")
                 .contains("MemoryDiagnosisAgent");
     }
+
+    // ==================== Scenario 8: 四 Agent 并行 (SQL + CPU + Memory + JVM) ====================
+
+    @Test
+    void shouldParallelDiagnoseWithFourAgents() {
+        DiagnosisReport report = orchestrator.diagnose("sess-quad-01",
+                "数据库查询慢且CPU高内存不足且JVM堆满了");
+
+        assertThat(report.success()).isTrue();
+        assertThat(report.agentResults()).hasSize(4);
+        assertThat(report.agentResults().stream()
+                .map(DiagnosisReport.AgentResult::agentName))
+                .contains("SqlDiagnosisAgent", "CpuDiagnosisAgent", "MemoryDiagnosisAgent", "JvmDiagnosisAgent");
+
+        assertThat(sessionRepository.findBySessionId("sess-quad-01")).isPresent();
+
+        List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-quad-01");
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).getStatus()).isEqualTo(DiagnosisStatus.COMPLETED);
+        assertThat(records.get(0).getAgentName()).contains("SqlDiagnosisAgent")
+                .contains("CpuDiagnosisAgent")
+                .contains("MemoryDiagnosisAgent")
+                .contains("JvmDiagnosisAgent");
+    }
 }

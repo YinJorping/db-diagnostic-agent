@@ -111,7 +111,7 @@ public class MemoryUsageTool implements Tool {
                 case "8kb" -> (long) (value * 8 * 1024);
                 default -> {
                     log.warn("未知的 pg_settings unit: {}, 值: {}, 将返回 0", unit, settingValue);
-                    return 0;
+                    yield 0;
                 }
             };
         } catch (NumberFormatException e) {

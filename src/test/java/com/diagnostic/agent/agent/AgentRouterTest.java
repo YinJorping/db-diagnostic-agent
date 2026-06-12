@@ -23,6 +23,7 @@ class AgentRouterTest {
     private SqlDiagnosisAgent sqlAgent;
     private Agent cpuAgent;
     private Agent memoryAgent;
+    private Agent jvmAgent;
 
     @BeforeEach
     void setup() {
@@ -30,7 +31,9 @@ class AgentRouterTest {
         cpuAgent = new TestKeywordAgent("CpuAgent", List.of("cpu", "负载", "load", "CPU飙高", "CPU 100%"));
         memoryAgent = new TestKeywordAgent("MemoryAgent",
                 List.of("内存", "memory", "缓存", "buffer", "shared_buffers", "work_mem", "命中率", "内存不足"));
-        router = new AgentRouter(List.of(sqlAgent, cpuAgent, memoryAgent));
+        jvmAgent = new TestKeywordAgent("JvmAgent",
+                List.of("jvm", "heap", "gc", "full gc", "young gc", "old gc", "metaspace", "oom", "堆", "垃圾回收", "元空间"));
+        router = new AgentRouter(List.of(sqlAgent, cpuAgent, memoryAgent, jvmAgent));
     }
 
     // ---- route() — 向后兼容 ----
@@ -154,6 +157,37 @@ class AgentRouterTest {
     void shouldNotMatchAnyAgentForUnrelatedInput() {
         List<Agent> agents = router.routeAll("今天天气怎么样");
         assertThat(agents).isEmpty();
+    }
+
+    // ---- JVM Agent 路由 ----
+
+    @Test
+    void shouldRouteToJvmAgentOnly() {
+        List<Agent> agents = router.routeAll("Full GC 频繁触发");
+        assertThat(agents).hasSize(1);
+        assertThat(agents.get(0).getName()).isEqualTo("JvmAgent");
+    }
+
+    @Test
+    void shouldRouteToSqlAndJvmAgents() {
+        List<Agent> agents = router.routeAll("数据库慢且heap高");
+        assertThat(agents).hasSize(2);
+        assertThat(agents.stream().map(Agent::getName))
+                .containsExactlyInAnyOrder("SqlDiagnosisAgent", "JvmAgent");
+    }
+
+    @Test
+    void shouldRouteToAllFourAgents() {
+        List<Agent> agents = router.routeAll("数据库慢且CPU高内存不足且JVM堆满");
+        assertThat(agents).hasSize(4);
+        assertThat(agents.stream().map(Agent::getName))
+                .containsExactlyInAnyOrder("SqlDiagnosisAgent", "CpuAgent", "MemoryAgent", "JvmAgent");
+    }
+
+    @Test
+    void shouldNotRouteMemoryKeywordToJvmAgent() {
+        List<Agent> agents = router.routeAll("数据库内存不足");
+        assertThat(agents.stream().map(Agent::getName)).doesNotContain("JvmAgent");
     }
 
     // ---- helper ----
