@@ -29,9 +29,22 @@ public class StreamingDiagnosisService {
             emit(emitter, DiagnosisEvent.of(DiagnosisEventType.START, "开始诊断"));
             emit(emitter, DiagnosisEvent.of(DiagnosisEventType.ROUTING, "问题路由中"));
 
-            DiagnosisResult result = orchestrator.diagnose(sessionId, problem);
+            AgentProgressListener listener = new AgentProgressListener() {
+                @Override
+                public void onAgentStart(String sid, String agentName) {
+                    safeEmit(emitter, DiagnosisEvent.of(DiagnosisEventType.AGENT_START,
+                            agentName + " 开始诊断"));
+                }
 
-            emit(emitter, DiagnosisEvent.of(DiagnosisEventType.RESULT, "诊断完成", result));
+                @Override
+                public void onAgentResult(String sid, DiagnosisResult result) {
+                    safeEmit(emitter, DiagnosisEvent.of(DiagnosisEventType.AGENT_RESULT,
+                            result.getAgentName() + " 完成", result));
+                }
+            };
+
+            DiagnosisReport report = orchestrator.diagnose(sessionId, problem, listener);
+            emit(emitter, DiagnosisEvent.of(DiagnosisEventType.RESULT, "诊断完成", report));
         } catch (Exception e) {
             log.error("SSE 诊断失败: sessionId={}", sessionId, e);
             safeEmit(emitter, DiagnosisEvent.of(DiagnosisEventType.ERROR, e.getMessage()));

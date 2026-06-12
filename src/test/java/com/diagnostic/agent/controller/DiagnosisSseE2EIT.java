@@ -87,14 +87,20 @@ class DiagnosisSseE2EIT {
         assertThat(eventTypes).contains(
                 DiagnosisEventType.START.name(),
                 DiagnosisEventType.ROUTING.name(),
+                DiagnosisEventType.AGENT_START.name(),
+                DiagnosisEventType.AGENT_RESULT.name(),
                 DiagnosisEventType.RESULT.name(),
                 DiagnosisEventType.COMPLETE.name());
 
         int startIdx = eventTypes.indexOf(DiagnosisEventType.START.name());
+        int agentStartIdx = eventTypes.indexOf(DiagnosisEventType.AGENT_START.name());
+        int agentResultIdx = eventTypes.indexOf(DiagnosisEventType.AGENT_RESULT.name());
         int resultIdx = eventTypes.indexOf(DiagnosisEventType.RESULT.name());
         int completeIdx = eventTypes.indexOf(DiagnosisEventType.COMPLETE.name());
 
         assertThat(startIdx).isLessThan(resultIdx);
+        assertThat(agentStartIdx).isLessThan(agentResultIdx);
+        assertThat(agentResultIdx).isLessThan(resultIdx);
         assertThat(completeIdx).isEqualTo(eventTypes.size() - 1);
     }
 

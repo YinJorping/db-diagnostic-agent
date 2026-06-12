@@ -45,5 +45,9 @@ diagnostic:
     timeout-seconds: 5       # Tool 执行超时
   memory:
     ttl-minutes: 30          # ChatMemory Redis TTL
+  executor:
+    core-pool-size: 2        # Agent 并行线程池常驻线程
+    max-pool-size: 4         # 峰值线程数
+    queue-capacity: 100      # 有界队列容量
   workflow:
     max-steps: 10            # 单次诊断最大步骤数

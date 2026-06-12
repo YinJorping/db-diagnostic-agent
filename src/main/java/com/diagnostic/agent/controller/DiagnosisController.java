@@ -1,6 +1,6 @@
 package com.diagnostic.agent.controller;
 
-import com.diagnostic.agent.agent.DiagnosisResult;
+import com.diagnostic.agent.agent.DiagnosisReport;
 import com.diagnostic.agent.agent.OrchestratorAgent;
 import com.diagnostic.agent.common.ApiResponse;
 import com.diagnostic.agent.controller.dto.DiagnosisRequest;
@@ -21,8 +21,8 @@ public class DiagnosisController {
 
     @PostMapping("/api/diagnose")
     public ApiResponse<DiagnosisResponse> diagnose(@Valid @RequestBody DiagnosisRequest request) {
-        DiagnosisResult result = orchestrator.diagnose(request.sessionId(), request.problem());
-        DiagnosisResponse response = DiagnosisResponse.from(result, request.sessionId());
+        DiagnosisReport report = orchestrator.diagnose(request.sessionId(), request.problem());
+        DiagnosisResponse response = DiagnosisResponse.from(report, request.sessionId());
         return ApiResponse.success(response);
     }
 }

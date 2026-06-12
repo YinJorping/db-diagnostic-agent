@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.memory.MessageType;
+import com.diagnostic.agent.memory.StoredMessage;
 import com.diagnostic.agent.tool.RiskLevel;
 import com.diagnostic.agent.tool.Tool;
 import com.diagnostic.agent.tool.ToolRegistry;
@@ -7,6 +9,7 @@ import com.diagnostic.agent.tool.ToolResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -25,12 +28,13 @@ class BaseExpertAgentTest {
     @Mock private ToolRegistry toolRegistry;
     @Mock private PromptService promptService;
     @Mock private LlmClient llmClient;
+    @Mock private PromptContextBuilder promptContextBuilder;
 
     private TestAgent agent;
 
     @BeforeEach
     void setup() {
-        agent = new TestAgent(toolRegistry, promptService, llmClient);
+        agent = new TestAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
     }
 
     // ---- 1. Tool 过滤：按名选择，跳过不存在的 ----
@@ -109,10 +113,11 @@ class BaseExpertAgentTest {
     @Test
     void shouldReturnLowForEmptyToolList() {
         agent.setAssignedTools(List.of());
+        when(promptContextBuilder.buildContext(anyString())).thenReturn("");
         when(promptService.loadTemplate(anyString())).thenReturn("system prompt");
         when(llmClient.chat(anyString(), anyString())).thenReturn("无工具可用");
 
-        DiagnosisResult result = agent.diagnose("test");
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-1", "test"));
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getRisk()).isEqualTo(RiskLevel.LOW);
@@ -163,6 +168,49 @@ class BaseExpertAgentTest {
         assertThat(captured.get()).containsEntry("customKey", "customValue");
     }
 
+    // ---- 7. 历史注入 ----
+
+    @Test
+    void shouldIncludeHistoryInUserPrompt() {
+        List<StoredMessage> history = List.of(
+                StoredMessage.of(MessageType.USER, "数据库很慢"),
+                StoredMessage.of(MessageType.ASSISTANT, "怀疑缺少索引")
+        );
+        agent.setAssignedTools(List.of());
+        when(promptContextBuilder.buildContext("sess-1")).thenReturn(
+                "=== 历史会话 ===\n用户: 数据库很慢\n助手: 怀疑缺少索引\n");
+        when(promptService.loadTemplate(anyString())).thenReturn("system");
+        when(llmClient.chat(anyString(), anyString())).thenReturn("诊断结果");
+
+        agent.diagnose(new DiagnosisContext("sess-1", "CPU高"));
+
+        ArgumentCaptor<String> userPromptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).chat(anyString(), userPromptCaptor.capture());
+        String userPrompt = userPromptCaptor.getValue();
+        assertThat(userPrompt).contains("=== 历史会话 ===");
+        assertThat(userPrompt).contains("用户: 数据库很慢");
+        assertThat(userPrompt).contains("助手: 怀疑缺少索引");
+        assertThat(userPrompt).contains("CPU高");
+    }
+
+    // ---- 8. 空历史 ----
+
+    @Test
+    void shouldHandleEmptyHistory() {
+        agent.setAssignedTools(List.of());
+        when(promptContextBuilder.buildContext("sess-2")).thenReturn("");
+        when(promptService.loadTemplate(anyString())).thenReturn("system");
+        when(llmClient.chat(anyString(), anyString())).thenReturn("诊断结果");
+
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-2", "test"));
+
+        assertThat(result.isSuccess()).isTrue();
+        ArgumentCaptor<String> userPromptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).chat(anyString(), userPromptCaptor.capture());
+        String userPrompt = userPromptCaptor.getValue();
+        assertThat(userPrompt).doesNotContain("=== 历史会话 ===");
+    }
+
     // ---- Helpers ----
 
     private static Tool dummyThrowingTool(String name) {
@@ -193,8 +241,8 @@ class BaseExpertAgentTest {
         private String skipToolName;
         private Map<String, Object> toolParams;
 
-        TestAgent(ToolRegistry registry, PromptService prompts, LlmClient llm) {
-            super(registry, prompts, llm);
+        TestAgent(ToolRegistry registry, PromptService prompts, LlmClient llm, PromptContextBuilder pcb) {
+            super(registry, prompts, llm, pcb);
         }
 
         void setAssignedTools(List<String> names) { this.assignedTools = names; }

@@ -10,9 +10,12 @@ import com.diagnostic.agent.repository.SessionRepository;
 import com.diagnostic.agent.tool.RiskLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Component
 public class OrchestratorAgent {
@@ -27,33 +30,43 @@ public class OrchestratorAgent {
     private final PromptService promptService;
     private final LlmClient llmClient;
     private final ChatMemoryStore memoryStore;
+    private final PromptContextBuilder promptContextBuilder;
+    private final Executor agentExecutor;
 
     public OrchestratorAgent(SessionRepository sessionRepository,
                              DiagnosisRecordRepository recordRepository,
                              AgentRouter agentRouter,
                              PromptService promptService,
                              LlmClient llmClient,
-                             ChatMemoryStore memoryStore) {
+                             ChatMemoryStore memoryStore,
+                             PromptContextBuilder promptContextBuilder,
+                             @Qualifier("agentExecutor") Executor agentExecutor) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.agentRouter = agentRouter;
         this.promptService = promptService;
         this.llmClient = llmClient;
         this.memoryStore = memoryStore;
+        this.promptContextBuilder = promptContextBuilder;
+        this.agentExecutor = agentExecutor;
     }
 
-    public DiagnosisResult diagnose(String sessionId, String problem) {
+    public DiagnosisReport diagnose(String sessionId, String problem) {
+        return diagnose(sessionId, problem, AgentProgressListener.NOOP);
+    }
+
+    public DiagnosisReport diagnose(String sessionId, String problem, AgentProgressListener listener) {
         findOrCreateSession(sessionId);
         DiagnosisRecord record = createRecord(sessionId, problem);
 
         try {
-            DiagnosisResult result = executeDiagnosis(problem);
-            completeRecord(record, result);
+            DiagnosisReport report = executeMultiDiagnosis(sessionId, problem, listener);
+            completeRecord(record, report);
             memoryStore.addAll(sessionId, List.of(
                     StoredMessage.of(MessageType.USER, problem),
-                    StoredMessage.of(MessageType.ASSISTANT, result.getSummary())
+                    StoredMessage.of(MessageType.ASSISTANT, report.finalSummary())
             ));
-            return result;
+            return report;
         } catch (Exception e) {
             log.error("诊断失败: sessionId={}, problem={}", sessionId, problem, e);
             failRecord(record, e.getMessage());
@@ -63,18 +76,54 @@ public class OrchestratorAgent {
 
     // ---- 诊断执行 ----
 
-    private DiagnosisResult executeDiagnosis(String problem) {
-        Agent agent = agentRouter.route(problem);
-        if (agent != null) {
-            return agent.diagnose(problem);
+    private DiagnosisReport executeMultiDiagnosis(String sessionId, String problem,
+                                                   AgentProgressListener listener) {
+        List<Agent> agents = agentRouter.routeAll(problem);
+        if (agents.isEmpty()) {
+            DiagnosisResult fallback = generalFallback(new DiagnosisContext(sessionId, problem));
+            listener.onAgentStart(sessionId, GENERAL_AGENT);
+            listener.onAgentResult(sessionId, fallback);
+            return DiagnosisReport.fromSingle(sessionId, fallback);
         }
-        return generalFallback(problem);
+        DiagnosisContext ctx = new DiagnosisContext(sessionId, problem);
+        List<CompletableFuture<DiagnosisResult>> futures = agents.stream()
+                .map(agent -> CompletableFuture
+                        .supplyAsync(() -> {
+                            listener.onAgentStart(sessionId, agent.getName());
+                            return agent.diagnose(ctx);
+                        }, agentExecutor)
+                        .thenApply(result -> {
+                            safeListenerResult(listener, sessionId, result);
+                            return result;
+                        })
+                        .exceptionally(ex -> {
+                            log.error("Agent [{}] 并行执行异常", agent.getName(), ex);
+                            DiagnosisResult failure = DiagnosisResult.failure(agent.getName(), ex.getMessage());
+                            safeListenerResult(listener, sessionId, failure);
+                            return failure;
+                        }))
+                .toList();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        List<DiagnosisResult> results = futures.stream()
+                .map(CompletableFuture::join)
+                .toList();
+        return DiagnosisReport.aggregate(sessionId, results);
     }
 
-    private DiagnosisResult generalFallback(String problem) {
+    private static void safeListenerResult(AgentProgressListener listener, String sessionId,
+                                            DiagnosisResult result) {
+        try {
+            listener.onAgentResult(sessionId, result);
+        } catch (Exception ignored) {
+            // 回调异常不影响诊断流程
+        }
+    }
+
+    private DiagnosisResult generalFallback(DiagnosisContext ctx) {
         long start = System.currentTimeMillis();
         String systemPrompt = loadFallbackPrompt();
-        String userPrompt = "用户问题: " + problem;
+        String historyText = promptContextBuilder.buildContext(ctx.sessionId());
+        String userPrompt = historyText + "用户问题: " + ctx.problem();
         String response = llmClient.chat(systemPrompt, userPrompt);
         long elapsed = System.currentTimeMillis() - start;
         return DiagnosisResult.success(GENERAL_AGENT, response, response, RiskLevel.LOW, elapsed);
@@ -106,9 +155,12 @@ public class OrchestratorAgent {
         return recordRepository.save(record);
     }
 
-    private void completeRecord(DiagnosisRecord record, DiagnosisResult result) {
-        record.setAgentName(result.getAgentName());
-        record.setSummary(result.getSummary());
+    private void completeRecord(DiagnosisRecord record, DiagnosisReport report) {
+        record.setAgentName(report.agentResults().stream()
+                .map(DiagnosisReport.AgentResult::agentName)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse(GENERAL_AGENT));
+        record.setSummary(report.finalSummary());
         record.setStatus(DiagnosisStatus.COMPLETED);
         recordRepository.save(record);
     }

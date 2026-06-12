@@ -60,7 +60,7 @@ class SqlDiagnosisAgentIT {
 
     @Test
     void shouldSkipExplainToolWhenNoSql() {
-        DiagnosisResult result = agent.diagnose("数据库响应变慢，请帮我诊断");
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-1", "数据库响应变慢，请帮我诊断"));
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getAgentName()).isEqualTo("SqlDiagnosisAgent");
@@ -71,8 +71,8 @@ class SqlDiagnosisAgentIT {
 
     @Test
     void shouldExecuteBothToolsWhenSqlPresent() {
-        DiagnosisResult result = agent.diagnose(
-                "SELECT * FROM orders_no_idx WHERE status = 'pending' 这个查询很慢");
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-2",
+                "SELECT * FROM orders_no_idx WHERE status = 'pending' 这个查询很慢"));
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getRisk()).isIn(RiskLevel.HIGH, RiskLevel.MEDIUM);
@@ -82,7 +82,8 @@ class SqlDiagnosisAgentIT {
 
     @Test
     void shouldStillSucceedWhenExplainToolFailsOnIllegalSql() {
-        DiagnosisResult result = agent.diagnose("DELETE FROM orders_no_idx WHERE status = 'done'");
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-3",
+                "DELETE FROM orders_no_idx WHERE status = 'done'"));
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getAgentName()).isEqualTo("SqlDiagnosisAgent");
@@ -95,7 +96,7 @@ class SqlDiagnosisAgentIT {
     @Test
     void shouldAlwaysExecuteSlowQueryTool() {
         // 无 SQL 输入，但 SlowQueryTool 仍应执行
-        DiagnosisResult result = agent.diagnose("数据库慢");
+        DiagnosisResult result = agent.diagnose(new DiagnosisContext("sess-4", "数据库慢"));
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getSummary()).isNotNull();

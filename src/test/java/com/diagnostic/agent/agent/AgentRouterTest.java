@@ -7,6 +7,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
@@ -15,16 +17,19 @@ class AgentRouterTest {
     @Mock private ToolRegistry toolRegistry;
     @Mock private PromptService promptService;
     @Mock private LlmClient llmClient;
+    @Mock private PromptContextBuilder promptContextBuilder;
 
     private AgentRouter router;
+    private SqlDiagnosisAgent sqlAgent;
 
     @BeforeEach
     void setup() {
-        SqlDiagnosisAgent sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient);
-        router = new AgentRouter(sqlAgent);
+        sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
+        Agent cpuAgent = new TestKeywordAgent(List.of("cpu", "负载", "load"));
+        router = new AgentRouter(List.of(sqlAgent, cpuAgent));
     }
 
-    // ---- SQL 主题 → SqlDiagnosisAgent ----
+    // ---- route() — 向后兼容 ----
 
     @Test
     void shouldRouteSqlProblemToSqlAgent() {
@@ -56,8 +61,6 @@ class AgentRouterTest {
         assertThat(router.route("sElEcT count(*) from orders")).isNotNull();
     }
 
-    // ---- 非 SQL 主题 → null ----
-
     @Test
     void shouldReturnNullForNonSqlProblem() {
         assertThat(router.route("今天天气怎么样")).isNull();
@@ -66,5 +69,71 @@ class AgentRouterTest {
     @Test
     void shouldReturnNullForJavaCodeProblem() {
         assertThat(router.route("帮我写Java代码")).isNull();
+    }
+
+    // ---- null / blank ----
+
+    @Test
+    void shouldReturnNullForNullProblemInRoute() {
+        assertThat(router.route(null)).isNull();
+    }
+
+    @Test
+    void shouldReturnNullForEmptyProblemInRoute() {
+        assertThat(router.route("  ")).isNull();
+    }
+
+    // ---- routeAll() ----
+
+    @Test
+    void shouldReturnSingleAgentForSqlOnlyProblem() {
+        List<Agent> agents = router.routeAll("SELECT * FROM t");
+        assertThat(agents).hasSize(1);
+        assertThat(agents.get(0)).isSameAs(sqlAgent);
+    }
+
+    @Test
+    void shouldReturnSingleAgentForCpuOnlyProblem() {
+        List<Agent> agents = router.routeAll("CPU负载很高");
+        assertThat(agents).hasSize(1);
+    }
+
+    @Test
+    void shouldReturnMultipleAgentsForCrossDomainProblem() {
+        List<Agent> agents = router.routeAll("数据库查询很慢且CPU负载100%");
+        assertThat(agents).hasSize(2);
+    }
+
+    @Test
+    void shouldReturnEmptyListForNoMatch() {
+        List<Agent> agents = router.routeAll("今天天气怎么样");
+        assertThat(agents).isEmpty();
+    }
+
+    @Test
+    void shouldReturnEmptyListForNullProblem() {
+        assertThat(router.routeAll(null)).isEmpty();
+    }
+
+    @Test
+    void shouldReturnEmptyListForBlankProblem() {
+        assertThat(router.routeAll("  ")).isEmpty();
+    }
+
+    // ---- helper ----
+
+    static class TestKeywordAgent implements Agent {
+        private final List<String> keywords;
+
+        TestKeywordAgent(List<String> keywords) {
+            this.keywords = keywords;
+        }
+
+        @Override public String getName() { return "TestKeywordAgent"; }
+        @Override public String getDescription() { return "test"; }
+        @Override public List<String> getKeywords() { return keywords; }
+        @Override public DiagnosisResult diagnose(DiagnosisContext ctx) {
+            throw new UnsupportedOperationException();
+        }
     }
 }

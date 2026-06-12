@@ -25,13 +25,16 @@ public abstract class BaseExpertAgent implements Agent {
     protected final ToolRegistry toolRegistry;
     protected final PromptService promptService;
     protected final LlmClient llmClient;
+    protected final PromptContextBuilder promptContextBuilder;
 
     protected BaseExpertAgent(ToolRegistry toolRegistry,
                               PromptService promptService,
-                              LlmClient llmClient) {
+                              LlmClient llmClient,
+                              PromptContextBuilder promptContextBuilder) {
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
         this.llmClient = llmClient;
+        this.promptContextBuilder = promptContextBuilder;
     }
 
     // ---- 子类必须实现 ----
@@ -57,13 +60,15 @@ public abstract class BaseExpertAgent implements Agent {
     // ---- 模板方法 ----
 
     @Override
-    public DiagnosisResult diagnose(String problem) {
+    public DiagnosisResult diagnose(DiagnosisContext ctx) {
         long start = System.currentTimeMillis();
         try {
+            String historyText = promptContextBuilder.buildContext(ctx.sessionId());
+
             List<Tool> tools = selectTools();
-            List<ToolResult> toolResults = executeTools(tools, problem);
+            List<ToolResult> toolResults = executeTools(tools, ctx.problem());
             String toolResultsText = formatToolResults(toolResults);
-            String userPrompt = buildUserPrompt(problem, toolResultsText);
+            String userPrompt = buildUserPrompt(ctx.problem(), toolResultsText, historyText);
             String systemPrompt = promptService.loadTemplate(getSystemPromptTemplateKey());
             String llmResponse = llmClient.chat(systemPrompt, userPrompt);
             RiskLevel risk = aggregateRisk(toolResults);
@@ -71,7 +76,7 @@ public abstract class BaseExpertAgent implements Agent {
             long elapsed = System.currentTimeMillis() - start;
             return DiagnosisResult.success(getName(), llmResponse, llmResponse, risk, elapsed);
         } catch (Exception e) {
-            log.error("Agent [{}] 诊断失败: {}", getName(), e.getMessage(), e);
+            log.error("Agent [{}] 诊断失败: sessionId={}, {}", getName(), ctx.sessionId(), e.getMessage(), e);
             long elapsed = System.currentTimeMillis() - start;
             return DiagnosisResult.failure(getName(), e.getMessage());
         }
@@ -134,9 +139,10 @@ public abstract class BaseExpertAgent implements Agent {
         return sb.toString();
     }
 
-    /** 构建完整 User Prompt。 */
-    protected String buildUserPrompt(String problem, String toolResultsText) {
-        return "用户问题: " + problem + "\n\n"
+    /** 构建完整 User Prompt，前置历史上下文。 */
+    protected String buildUserPrompt(String problem, String toolResultsText, String historyText) {
+        return historyText
+                + "用户问题: " + problem + "\n\n"
                 + toolResultsText + "\n"
                 + "请基于以上诊断工具的输出结果，给出诊断结论和优化建议。";
     }

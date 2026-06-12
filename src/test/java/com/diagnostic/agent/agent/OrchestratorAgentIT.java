@@ -3,6 +3,7 @@ package com.diagnostic.agent.agent;
 import com.diagnostic.agent.repository.DiagnosisRecord;
 import com.diagnostic.agent.repository.DiagnosisRecordRepository;
 import com.diagnostic.agent.repository.SessionRepository;
+import com.diagnostic.agent.tool.RiskLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,8 +20,7 @@ import javax.sql.DataSource;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 
 @SpringBootTest
@@ -68,28 +68,29 @@ class OrchestratorAgentIT {
 
     @Test
     void shouldCompleteFullFlowForSqlProblem() {
-        DiagnosisResult result = orchestrator.diagnose("sess-001",
+        DiagnosisReport report = orchestrator.diagnose("sess-001",
                 "SELECT * FROM orders_no_idx WHERE status = 'pending' 很慢");
 
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getAgentName()).isEqualTo("SqlDiagnosisAgent");
+        assertThat(report.success()).isTrue();
+        assertThat(report.agentResults()).hasSize(1);
+        assertThat(report.agentResults().get(0).agentName()).isEqualTo("SqlDiagnosisAgent");
 
         assertThat(sessionRepository.findBySessionId("sess-001")).isPresent();
 
         List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-001");
         assertThat(records).hasSize(1);
         assertThat(records.get(0).getStatus()).isEqualTo(DiagnosisStatus.COMPLETED);
-        assertThat(records.get(0).getAgentName()).isEqualTo("SqlDiagnosisAgent");
+        assertThat(records.get(0).getAgentName()).contains("SqlDiagnosisAgent");
     }
 
     // ==================== Scenario 2: 非 SQL → GENERAL_AGENT ====================
 
     @Test
     void shouldFallbackToGeneralAgentForNonSqlProblem() {
-        DiagnosisResult result = orchestrator.diagnose("sess-002", "今天天气怎么样");
+        DiagnosisReport report = orchestrator.diagnose("sess-002", "今天天气怎么样");
 
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getAgentName()).isEqualTo("GeneralAgent");
+        assertThat(report.success()).isTrue();
+        assertThat(report.agentResults().get(0).agentName()).isEqualTo("GeneralAgent");
 
         List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-002");
         assertThat(records).hasSize(1);
@@ -109,19 +110,39 @@ class OrchestratorAgentIT {
         assertThat(records).allMatch(r -> DiagnosisStatus.COMPLETED.equals(r.getStatus()));
     }
 
-    // ==================== Scenario 4: Agent 异常 → FAILED + 传播 ====================
+    // ==================== Scenario 4: Agent 异常 → 并行隔离, report 标记 failure ====================
 
     @Test
-    void shouldMarkRecordFailedAndRethrowOnAgentException() {
+    void shouldReturnFailedAgentResultOnException() {
         doThrow(new RuntimeException("Agent 内部错误"))
-                .when(sqlDiagnosisAgent).diagnose(anyString());
+                .when(sqlDiagnosisAgent).diagnose(any(DiagnosisContext.class));
 
-        assertThatThrownBy(() -> orchestrator.diagnose("sess-004", "SELECT * FROM t"))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Agent 内部错误");
+        DiagnosisReport report = orchestrator.diagnose("sess-004", "SELECT * FROM t");
+
+        assertThat(report.success()).isFalse();
+        assertThat(report.overallRisk()).isEqualTo(RiskLevel.UNKNOWN);
+        assertThat(report.agentResults()).hasSize(1);
+        assertThat(report.agentResults().get(0).success()).isFalse();
 
         List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-004");
         assertThat(records).hasSize(1);
-        assertThat(records.get(0).getStatus()).isEqualTo(DiagnosisStatus.FAILED);
+        assertThat(records.get(0).getStatus()).isEqualTo(DiagnosisStatus.COMPLETED);
+    }
+
+    // ==================== Scenario 5: 历史对话注入 ====================
+
+    @Test
+    void shouldIncludeHistoryInSubsequentDiagnosis() {
+        orchestrator.diagnose("sess-hist-01", "数据库查询很慢，怀疑缺少索引");
+
+        DiagnosisReport report2 = orchestrator.diagnose("sess-hist-01", "CPU突然到100%了");
+
+        assertThat(report2.success()).isTrue();
+
+        List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-hist-01");
+        assertThat(records).hasSize(2);
+        assertThat(records).allMatch(r -> DiagnosisStatus.COMPLETED.equals(r.getStatus()));
+
+        assertThat(sessionRepository.findBySessionId("sess-hist-01")).isPresent();
     }
 }
