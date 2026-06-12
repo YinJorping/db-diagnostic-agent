@@ -24,6 +24,7 @@ class AgentRouterTest {
     private Agent cpuAgent;
     private Agent memoryAgent;
     private Agent jvmAgent;
+    private Agent diskAgent;
 
     @BeforeEach
     void setup() {
@@ -33,7 +34,9 @@ class AgentRouterTest {
                 List.of("内存", "memory", "缓存", "buffer", "shared_buffers", "work_mem", "命中率", "内存不足"));
         jvmAgent = new TestKeywordAgent("JvmAgent",
                 List.of("jvm", "heap", "gc", "full gc", "young gc", "old gc", "metaspace", "oom", "堆", "垃圾回收", "元空间"));
-        router = new AgentRouter(List.of(sqlAgent, cpuAgent, memoryAgent, jvmAgent));
+        diskAgent = new TestKeywordAgent("DiskAgent",
+                List.of("disk", "磁盘", "io", "i/o", "存储", "空间", "容量", "空间不足", "磁盘满", "磁盘使用率"));
+        router = new AgentRouter(List.of(sqlAgent, cpuAgent, memoryAgent, jvmAgent, diskAgent));
     }
 
     // ---- route() — 向后兼容 ----
@@ -188,6 +191,31 @@ class AgentRouterTest {
     void shouldNotRouteMemoryKeywordToJvmAgent() {
         List<Agent> agents = router.routeAll("数据库内存不足");
         assertThat(agents.stream().map(Agent::getName)).doesNotContain("JvmAgent");
+    }
+
+    // ---- Disk Agent 路由 ----
+
+    @Test
+    void shouldRouteToDiskAgentOnly() {
+        List<Agent> agents = router.routeAll("磁盘空间不足");
+        assertThat(agents).hasSize(1);
+        assertThat(agents.get(0).getName()).isEqualTo("DiskAgent");
+    }
+
+    @Test
+    void shouldRouteToSqlAndDiskAgents() {
+        List<Agent> agents = router.routeAll("数据库慢且I/O很高");
+        assertThat(agents).hasSize(2);
+        assertThat(agents.stream().map(Agent::getName))
+                .contains("SqlDiagnosisAgent", "DiskAgent");
+    }
+
+    @Test
+    void shouldRouteToAllFiveAgents() {
+        List<Agent> agents = router.routeAll("数据库慢且CPU高内存不足JVM堆满且磁盘满");
+        assertThat(agents).hasSize(5);
+        assertThat(agents.stream().map(Agent::getName))
+                .contains("SqlDiagnosisAgent", "CpuAgent", "MemoryAgent", "JvmAgent", "DiskAgent");
     }
 
     // ---- helper ----

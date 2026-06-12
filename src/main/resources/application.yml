@@ -56,6 +56,11 @@ diagnostic:
     threshold-heap-medium: 0.70
     threshold-non-heap-high: 0.90
     threshold-thread-count: 500
+  disk:
+    data-dir: /var/lib/postgresql/data
+    threshold-usage-high: 0.85
+    threshold-usage-medium: 0.70
+    threshold-free-bytes-low: 10737418240
   executor:
     core-pool-size: 2        # Agent 并行线程池常驻线程
     max-pool-size: 4         # 峰值线程数
