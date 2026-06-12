@@ -43,9 +43,9 @@ class RepositoryIT {
     }
 
     @Test
-    void seedDataShouldHaveFourPromptTemplates() {
+    void seedDataShouldHaveFivePromptTemplates() {
         long count = promptTemplateRepository.count();
-        assertThat(count).isEqualTo(4);
+        assertThat(count).isEqualTo(5);
     }
 
     // ==================== PromptTemplate CRUD ====================
@@ -64,6 +64,7 @@ class RepositoryIT {
         assertThat(promptTemplateRepository.findByTemplateKey("sql_explain_analysis")).isPresent();
         assertThat(promptTemplateRepository.findByTemplateKey("orchestrator_router")).isPresent();
         assertThat(promptTemplateRepository.findByTemplateKey("cpu_diagnosis_system")).isPresent();
+        assertThat(promptTemplateRepository.findByTemplateKey("memory_diagnosis_system")).isPresent();
     }
 
     // ==================== Session CRUD ====================

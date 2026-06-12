@@ -45,6 +45,12 @@ diagnostic:
     timeout-seconds: 5       # Tool 执行超时
   memory:
     ttl-minutes: 30          # ChatMemory Redis TTL
+    threshold-buffer-hit-high: 0.99
+    threshold-buffer-hit-medium: 0.95
+    threshold-temp-files-count: 100
+    threshold-temp-bytes-bytes: 1073741824
+    threshold-shared-buffers-mb: 256
+    threshold-work-mem-mb: 256
   executor:
     core-pool-size: 2        # Agent 并行线程池常驻线程
     max-pool-size: 4         # 峰值线程数

@@ -22,12 +22,15 @@ class AgentRouterTest {
     private AgentRouter router;
     private SqlDiagnosisAgent sqlAgent;
     private Agent cpuAgent;
+    private Agent memoryAgent;
 
     @BeforeEach
     void setup() {
         sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
         cpuAgent = new TestKeywordAgent("CpuAgent", List.of("cpu", "负载", "load", "CPU飙高", "CPU 100%"));
-        router = new AgentRouter(List.of(sqlAgent, cpuAgent));
+        memoryAgent = new TestKeywordAgent("MemoryAgent",
+                List.of("内存", "memory", "缓存", "buffer", "shared_buffers", "work_mem", "命中率", "内存不足"));
+        router = new AgentRouter(List.of(sqlAgent, cpuAgent, memoryAgent));
     }
 
     // ---- route() — 向后兼容 ----
@@ -128,6 +131,29 @@ class AgentRouterTest {
     @Test
     void shouldReturnEmptyListForBlankProblem() {
         assertThat(router.routeAll("  ")).isEmpty();
+    }
+
+    // ---- Memory Agent 路由 ----
+
+    @Test
+    void shouldRouteToMemoryAgentOnly() {
+        List<Agent> agents = router.routeAll("缓存命中率低");
+        assertThat(agents).hasSize(1);
+        assertThat(agents.get(0).getName()).isEqualTo("MemoryAgent");
+    }
+
+    @Test
+    void shouldRouteToAllThreeAgentsForCrossDomainProblem() {
+        List<Agent> agents = router.routeAll("数据库慢且CPU高内存不足");
+        assertThat(agents).hasSize(3);
+        assertThat(agents.stream().map(Agent::getName))
+                .containsExactlyInAnyOrder("SqlDiagnosisAgent", "CpuAgent", "MemoryAgent");
+    }
+
+    @Test
+    void shouldNotMatchAnyAgentForUnrelatedInput() {
+        List<Agent> agents = router.routeAll("今天天气怎么样");
+        assertThat(agents).isEmpty();
     }
 
     // ---- helper ----
