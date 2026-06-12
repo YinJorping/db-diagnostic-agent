@@ -145,4 +145,26 @@ class OrchestratorAgentIT {
 
         assertThat(sessionRepository.findBySessionId("sess-hist-01")).isPresent();
     }
+
+    // ==================== Scenario 6: 双 Agent 并行 (SQL + CPU) ====================
+
+    @Test
+    void shouldParallelDiagnoseWithBothAgents() {
+        DiagnosisReport report = orchestrator.diagnose("sess-dual-01",
+                "数据库查询慢且CPU飙高");
+
+        assertThat(report.success()).isTrue();
+        assertThat(report.agentResults()).hasSize(2);
+        assertThat(report.agentResults().stream()
+                .map(DiagnosisReport.AgentResult::agentName))
+                .contains("SqlDiagnosisAgent", "CpuDiagnosisAgent");
+
+        assertThat(sessionRepository.findBySessionId("sess-dual-01")).isPresent();
+
+        List<DiagnosisRecord> records = recordRepository.findBySessionIdOrderByCreatedAtAsc("sess-dual-01");
+        assertThat(records).hasSize(1);
+        assertThat(records.get(0).getStatus()).isEqualTo(DiagnosisStatus.COMPLETED);
+        assertThat(records.get(0).getAgentName()).contains("SqlDiagnosisAgent")
+                .contains("CpuDiagnosisAgent");
+    }
 }

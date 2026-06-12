@@ -49,5 +49,11 @@ diagnostic:
     core-pool-size: 2        # Agent 并行线程池常驻线程
     max-pool-size: 4         # 峰值线程数
     queue-capacity: 100      # 有界队列容量
+  cpu:
+    threshold-system-high: 0.9
+    threshold-system-medium: 0.7
+    threshold-process-high: 0.8
+    threshold-load-high-multiplier: 1.5
+    threshold-load-medium-multiplier: 1.0
   workflow:
     max-steps: 10            # 单次诊断最大步骤数

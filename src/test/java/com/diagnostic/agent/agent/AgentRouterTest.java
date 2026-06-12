@@ -21,11 +21,12 @@ class AgentRouterTest {
 
     private AgentRouter router;
     private SqlDiagnosisAgent sqlAgent;
+    private Agent cpuAgent;
 
     @BeforeEach
     void setup() {
         sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
-        Agent cpuAgent = new TestKeywordAgent(List.of("cpu", "负载", "load"));
+        cpuAgent = new TestKeywordAgent("CpuAgent", List.of("cpu", "负载", "load", "CPU飙高", "CPU 100%"));
         router = new AgentRouter(List.of(sqlAgent, cpuAgent));
     }
 
@@ -96,12 +97,21 @@ class AgentRouterTest {
     void shouldReturnSingleAgentForCpuOnlyProblem() {
         List<Agent> agents = router.routeAll("CPU负载很高");
         assertThat(agents).hasSize(1);
+        assertThat(agents.get(0).getName()).isEqualTo("CpuAgent");
     }
 
     @Test
     void shouldReturnMultipleAgentsForCrossDomainProblem() {
         List<Agent> agents = router.routeAll("数据库查询很慢且CPU负载100%");
         assertThat(agents).hasSize(2);
+    }
+
+    @Test
+    void shouldMatchBothAgentsForSqlAndCpu100Problem() {
+        List<Agent> agents = router.routeAll("数据库慢且CPU 100%");
+        assertThat(agents).hasSize(2);
+        assertThat(agents.stream().map(Agent::getName))
+                .containsExactlyInAnyOrder("SqlDiagnosisAgent", "CpuAgent");
     }
 
     @Test
@@ -123,13 +133,15 @@ class AgentRouterTest {
     // ---- helper ----
 
     static class TestKeywordAgent implements Agent {
+        private final String name;
         private final List<String> keywords;
 
-        TestKeywordAgent(List<String> keywords) {
+        TestKeywordAgent(String name, List<String> keywords) {
+            this.name = name;
             this.keywords = keywords;
         }
 
-        @Override public String getName() { return "TestKeywordAgent"; }
+        @Override public String getName() { return name; }
         @Override public String getDescription() { return "test"; }
         @Override public List<String> getKeywords() { return keywords; }
         @Override public DiagnosisResult diagnose(DiagnosisContext ctx) {
