@@ -123,7 +123,7 @@ public class SlowQueryTool implements Tool {
                 String desc = "慢查询 #" + (i + 1) + " 平均耗时 " + String.format("%.2f", meanTimeMs) + " ms";
                 findings.add(finding(level, "SlowQuery", query, (long) row.get("calls"),
                         meanTimeMs, desc));
-                suggestions.add(suggestion(level,
+                suggestions.add(DiagnosticUtils.suggestion(level,
                         level.equals("HIGH")
                                 ? "该 SQL 平均耗时 " + String.format("%.0f", meanTimeMs) + "ms，建议分析执行计划并优化索引"
                                 : "该 SQL 平均耗时 " + String.format("%.0f", meanTimeMs) + "ms，建议关注并分析执行计划",
@@ -131,8 +131,8 @@ public class SlowQueryTool implements Tool {
             }
         }
 
-        suggestions = dedupByAction(suggestions);
-        RiskLevel risk = determineRisk(findings);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
+        RiskLevel risk = DiagnosticUtils.determineRisk(findings);
 
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("risk", risk.name());     // detail 保留 String 形式，向下兼容
@@ -150,14 +150,6 @@ public class SlowQueryTool implements Tool {
         return "LOW";
     }
 
-    private RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
-    }
-
     // ---- 错误处理 ----
 
     private String mapErrorMessage(Exception e) {
@@ -166,16 +158,6 @@ public class SlowQueryTool implements Tool {
             return "pg_stat_statements 扩展不可用，请确认 shared_preload_libraries 包含 pg_stat_statements";
         }
         return msg != null ? msg : "查询失败";
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
     }
 
     // ---- Helpers ----
@@ -189,14 +171,6 @@ public class SlowQueryTool implements Tool {
         m.put("calls", String.valueOf(calls));
         m.put("meanTimeMs", String.format("%.2f", meanTimeMs));
         m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
         return m;
     }
 

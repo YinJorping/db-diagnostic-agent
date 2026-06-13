@@ -1,5 +1,6 @@
 package com.diagnostic.agent.tool;
 
+import com.diagnostic.agent.common.util.FormatUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -101,30 +102,30 @@ public class DiskUsageTool implements Tool {
                         usageRatio * 100,
                         usedBytes / (1024 * 1024 * 1024),
                         m.totalBytes() / (1024 * 1024 * 1024));
-                findings.add(finding("HIGH", "DiskUsage", desc));
-                suggestions.add(suggestion("HIGH",
-                        "磁盘使用率超过 " + formatPercent(diskProps.getThresholdUsageHigh())
+                findings.add(DiagnosticUtils.finding("HIGH", "DiskUsage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
+                        "磁盘使用率超过 " + FormatUtil.formatPercent(diskProps.getThresholdUsageHigh())
                                 + "，建议立即清理旧数据、WAL 归档或扩容磁盘",
-                        "使用率 " + formatPercent(usageRatio)
+                        "使用率 " + FormatUtil.formatPercent(usageRatio)
                                 + " (可用 " + (m.usableBytes() / (1024 * 1024 * 1024)) + " GB)"));
             } else if (usageRatio > diskProps.getThresholdUsageMedium()) {
                 String desc = String.format("数据目录磁盘使用率偏高: %.1f%% (%d / %d GB)",
                         usageRatio * 100,
                         usedBytes / (1024 * 1024 * 1024),
                         m.totalBytes() / (1024 * 1024 * 1024));
-                findings.add(finding("MEDIUM", "DiskUsage", desc));
-                suggestions.add(suggestion("MEDIUM",
-                        "磁盘使用率超过 " + formatPercent(diskProps.getThresholdUsageMedium())
+                findings.add(DiagnosticUtils.finding("MEDIUM", "DiskUsage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
+                        "磁盘使用率超过 " + FormatUtil.formatPercent(diskProps.getThresholdUsageMedium())
                                 + "，建议关注增长趋势，规划扩容",
-                        "使用率 " + formatPercent(usageRatio)));
+                        "使用率 " + FormatUtil.formatPercent(usageRatio)));
             }
 
             // R3: 可用空间 < 绝对阈值
             if (m.usableBytes() < diskProps.getThresholdFreeBytesLow()) {
                 String desc = String.format("数据目录可用空间严重不足: %d GB",
                         m.usableBytes() / (1024 * 1024 * 1024));
-                findings.add(finding("HIGH", "DiskFreeSpace", desc));
-                suggestions.add(suggestion("HIGH",
+                findings.add(DiagnosticUtils.finding("HIGH", "DiskFreeSpace", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
                         "可用空间不足 " + (diskProps.getThresholdFreeBytesLow() / (1024 * 1024 * 1024))
                                 + " GB，有宕机风险，请立即扩容或清理",
                         "可用 " + (m.usableBytes() / (1024 * 1024 * 1024)) + " GB < "
@@ -132,10 +133,10 @@ public class DiskUsageTool implements Tool {
             }
         }
 
-        suggestions = dedupByAction(suggestions);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
 
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", determineRisk(findings).name());
+        detail.put("risk", DiagnosticUtils.determineRisk(findings).name());
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("diskMetrics", Map.of(
@@ -161,18 +162,6 @@ public class DiskUsageTool implements Tool {
         return detail;
     }
 
-    // ---- Risk 聚合 ----
-
-    RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
-    }
-
-    // ---- 格式化 ----
-
     @SuppressWarnings("unchecked")
     String buildSummary(Map<String, Object> detail) {
         String risk = (String) detail.get("risk");
@@ -181,37 +170,5 @@ public class DiskUsageTool implements Tool {
             return "磁盘空间使用正常，风险等级 " + risk;
         }
         return "检测到 " + findings.size() + " 个磁盘问题，风险等级 " + risk;
-    }
-
-    private static String formatPercent(double v) {
-        return String.format("%.0f%%", v * 100);
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
-    }
-
-    // ---- Helpers ----
-
-    private Map<String, String> finding(String level, String nodeType, String desc) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("level", level);
-        m.put("nodeType", nodeType);
-        m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
-        return m;
     }
 }

@@ -114,7 +114,7 @@ public class ExplainTool implements Tool {
                     table + " 全表扫描，预估扫描 " + rows + " 行"));
             String filterCol = extractFilterColumn(plan);
             if (!filterCol.isEmpty()) {
-                suggestions.add(suggestion("HIGH",
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
                         "建议为 " + filterCol + " 字段建立索引",
                         filterCol + " 列用于 WHERE 过滤但缺少索引"));
             }
@@ -126,7 +126,7 @@ public class ExplainTool implements Tool {
                     table + " 中等规模全表扫描，预估扫描 " + rows + " 行"));
             String filterCol = extractFilterColumn(plan);
             if (!filterCol.isEmpty()) {
-                suggestions.add(suggestion("MEDIUM",
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                         "建议为 " + filterCol + " 字段建立索引",
                         filterCol + " 列用于 WHERE 过滤"));
             }
@@ -137,31 +137,21 @@ public class ExplainTool implements Tool {
             String sortKey = plan.path("Sort Key").toString();
             findings.add(finding("MEDIUM", nodeType, null, rows,
                     "Sort 节点排序 " + rows + " 行，Sort Key: " + sortKey));
-            suggestions.add(suggestion("MEDIUM",
+            suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                     "建议为排序字段建立索引以优化 ORDER BY",
                     "排序字段缺少索引，导致 Using filesort"));
         }
 
         // Rule 4: Index Scan → LOW（不产出 finding）
 
-        suggestions = dedupByAction(suggestions);
-        RiskLevel risk = determineRisk(findings);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
+        RiskLevel risk = DiagnosticUtils.determineRisk(findings);
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("risk", risk.name());     // detail 保留 String 形式，向下兼容
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("explainJson", plan);
         return detail;
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
     }
 
     // ---- Helpers ----
@@ -173,14 +163,6 @@ public class ExplainTool implements Tool {
         m.put("table", table);
         m.put("estimatedRows", String.valueOf(rows));
         m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
         return m;
     }
 
@@ -203,13 +185,5 @@ public class ExplainTool implements Tool {
             return "未发现明显性能问题，风险等级 " + risk;
         }
         return "检测到 " + findings.size() + " 个问题，风险等级 " + risk;
-    }
-
-    private RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
     }
 }

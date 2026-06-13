@@ -1,5 +1,6 @@
 package com.diagnostic.agent.tool;
 
+import com.diagnostic.agent.common.util.FormatUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -54,25 +55,25 @@ public class CpuUsageTool implements Tool {
         List<Map<String, String>> suggestions = new ArrayList<>();
 
         if (m.systemCpuLoad() > cpuProps.getThresholdSystemHigh()) {
-            String desc = "系统 CPU 接近饱和，当前: " + formatPercent(m.systemCpuLoad());
-            findings.add(finding("HIGH", "SystemCpuLoad", desc));
-            suggestions.add(suggestion("HIGH",
+            String desc = "系统 CPU 接近饱和，当前: " + FormatUtil.formatPercent(m.systemCpuLoad());
+            findings.add(DiagnosticUtils.finding("HIGH", "SystemCpuLoad", desc));
+            suggestions.add(DiagnosticUtils.suggestion("HIGH",
                     "建议排查高 CPU 进程，考虑扩容或限制并发连接",
-                    "系统 CPU 使用率超过 " + formatPercent(cpuProps.getThresholdSystemHigh())));
+                    "系统 CPU 使用率超过 " + FormatUtil.formatPercent(cpuProps.getThresholdSystemHigh())));
         } else if (m.systemCpuLoad() > cpuProps.getThresholdSystemMedium()) {
-            String desc = "系统 CPU 使用率偏高，当前: " + formatPercent(m.systemCpuLoad());
-            findings.add(finding("MEDIUM", "SystemCpuLoad", desc));
-            suggestions.add(suggestion("MEDIUM",
+            String desc = "系统 CPU 使用率偏高，当前: " + FormatUtil.formatPercent(m.systemCpuLoad());
+            findings.add(DiagnosticUtils.finding("MEDIUM", "SystemCpuLoad", desc));
+            suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                     "建议关注 CPU 使用趋势，检查是否有慢查询或频繁 GC",
-                    "系统 CPU 使用率超过 " + formatPercent(cpuProps.getThresholdSystemMedium())));
+                    "系统 CPU 使用率超过 " + FormatUtil.formatPercent(cpuProps.getThresholdSystemMedium())));
         }
 
         if (m.processCpuLoad() > cpuProps.getThresholdProcessHigh()) {
-            String desc = "当前 JVM 进程 CPU 占用过高，当前: " + formatPercent(m.processCpuLoad());
-            findings.add(finding("HIGH", "ProcessCpuLoad", desc));
-            suggestions.add(suggestion("HIGH",
+            String desc = "当前 JVM 进程 CPU 占用过高，当前: " + FormatUtil.formatPercent(m.processCpuLoad());
+            findings.add(DiagnosticUtils.finding("HIGH", "ProcessCpuLoad", desc));
+            suggestions.add(DiagnosticUtils.suggestion("HIGH",
                     "建议分析 JVM 线程堆栈，检查是否有死循环或频繁 Full GC",
-                    "进程 CPU 使用率超过 " + formatPercent(cpuProps.getThresholdProcessHigh())));
+                    "进程 CPU 使用率超过 " + FormatUtil.formatPercent(cpuProps.getThresholdProcessHigh())));
         }
 
         int cores = m.availableProcessors();
@@ -80,23 +81,23 @@ public class CpuUsageTool implements Tool {
         if (loadAvg >= 0) {
             if (loadAvg > cores * cpuProps.getThresholdLoadHighMultiplier()) {
                 String desc = String.format("系统负载严重超标，load avg: %.2f, cores: %d", loadAvg, cores);
-                findings.add(finding("HIGH", "LoadAverage", desc));
-                suggestions.add(suggestion("HIGH",
+                findings.add(DiagnosticUtils.finding("HIGH", "LoadAverage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
                         "系统负载远超 CPU 核心数，建议立即排查高负载进程",
                         "load avg " + String.format("%.2f", loadAvg) + " > " + cores
                                 + " × " + cpuProps.getThresholdLoadHighMultiplier()));
             } else if (loadAvg > cores * cpuProps.getThresholdLoadMediumMultiplier()) {
                 String desc = String.format("系统负载偏高，load avg: %.2f, cores: %d", loadAvg, cores);
-                findings.add(finding("MEDIUM", "LoadAverage", desc));
-                suggestions.add(suggestion("MEDIUM",
+                findings.add(DiagnosticUtils.finding("MEDIUM", "LoadAverage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                         "系统负载略高于 CPU 核心数，建议关注",
                         "load avg " + String.format("%.2f", loadAvg) + " > " + cores));
             }
         }
 
-        suggestions = dedupByAction(suggestions);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", determineRisk(findings).name());
+        detail.put("risk", DiagnosticUtils.determineRisk(findings).name());
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("metrics", Map.of(
@@ -107,18 +108,6 @@ public class CpuUsageTool implements Tool {
         return detail;
     }
 
-    // ---- Risk 聚合 ----
-
-    RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
-    }
-
-    // ---- 格式化 ----
-
     String buildSummary(Map<String, Object> detail) {
         String risk = (String) detail.get("risk");
         @SuppressWarnings("unchecked")
@@ -127,37 +116,5 @@ public class CpuUsageTool implements Tool {
             return "CPU 资源使用正常，风险等级 " + risk;
         }
         return "检测到 " + findings.size() + " 个 CPU 资源问题，风险等级 " + risk;
-    }
-
-    private static String formatPercent(double v) {
-        return String.format("%.0f%%", v * 100);
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
-    }
-
-    // ---- Helpers ----
-
-    private Map<String, String> finding(String level, String nodeType, String desc) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("level", level);
-        m.put("nodeType", nodeType);
-        m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
-        return m;
     }
 }

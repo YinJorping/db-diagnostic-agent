@@ -1,5 +1,6 @@
 package com.diagnostic.agent.tool;
 
+import com.diagnostic.agent.common.util.FormatUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -127,24 +128,24 @@ public class MemoryUsageTool implements Tool {
 
         for (DbBufferStats s : stats) {
             long totalBlocks = s.blksHit() + s.blksRead();
-            if (totalBlocks == 0) continue; // 无 IO 统计
+            if (totalBlocks == 0) continue;
 
             double hitRatio = (double) s.blksHit() / totalBlocks;
 
             if (hitRatio < memoryProps.getThresholdBufferHitMedium()) {
                 String desc = String.format("%s 缓存命中率严重过低: %.1f%%", s.datname(), hitRatio * 100);
-                findings.add(finding("HIGH", "BufferHitRatio", desc));
-                suggestions.add(suggestion("HIGH",
+                findings.add(DiagnosticUtils.finding("HIGH", "BufferHitRatio", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
                         "建议增大 shared_buffers 或检查是否有大量顺序扫描",
-                        s.datname() + " 缓存命中率 " + formatPercent(hitRatio)
-                                + " < " + formatPercent(memoryProps.getThresholdBufferHitMedium())));
+                        s.datname() + " 缓存命中率 " + FormatUtil.formatPercent(hitRatio)
+                                + " < " + FormatUtil.formatPercent(memoryProps.getThresholdBufferHitMedium())));
             } else if (hitRatio < memoryProps.getThresholdBufferHitHigh()) {
                 String desc = String.format("%s 缓存命中率偏低: %.1f%%", s.datname(), hitRatio * 100);
-                findings.add(finding("MEDIUM", "BufferHitRatio", desc));
-                suggestions.add(suggestion("MEDIUM",
+                findings.add(DiagnosticUtils.finding("MEDIUM", "BufferHitRatio", desc));
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                         "建议关注缓存命中率趋势，评估是否需要增大 shared_buffers",
-                        s.datname() + " 缓存命中率 " + formatPercent(hitRatio)
-                                + " < " + formatPercent(memoryProps.getThresholdBufferHitHigh())));
+                        s.datname() + " 缓存命中率 " + FormatUtil.formatPercent(hitRatio)
+                                + " < " + FormatUtil.formatPercent(memoryProps.getThresholdBufferHitHigh())));
             }
         }
 
@@ -153,20 +154,20 @@ public class MemoryUsageTool implements Tool {
                     || s.tempBytes() > memoryProps.getThresholdTempBytesBytes()) {
                 String desc = String.format("%s 临时文件: %d 个, %d bytes",
                         s.datname(), s.tempFiles(), s.tempBytes());
-                findings.add(finding("MEDIUM", "TempFiles", desc));
-                suggestions.add(suggestion("MEDIUM",
+                findings.add(DiagnosticUtils.finding("MEDIUM", "TempFiles", desc));
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                         "临时文件过多，建议增大 work_mem 以减少磁盘排序",
                         s.datname() + " temp_files=" + s.tempFiles()
                                 + " 超过阈值 " + memoryProps.getThresholdTempFilesCount()));
-                break; // 每个数据库只报一次
+                break;
             }
         }
 
         SettingValue sb = settings.get("shared_buffers");
         if (sb != null && sb.valueMB() < memoryProps.getThresholdSharedBuffersMB()) {
             String desc = String.format("shared_buffers 配置过低: %d MB", sb.valueMB());
-            findings.add(finding("MEDIUM", "SharedBuffers", desc));
-            suggestions.add(suggestion("MEDIUM",
+            findings.add(DiagnosticUtils.finding("MEDIUM", "SharedBuffers", desc));
+            suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                     "建议增大 shared_buffers（通常为系统内存的 25%）",
                     "shared_buffers " + sb.valueMB() + " MB < " + memoryProps.getThresholdSharedBuffersMB() + " MB"));
         }
@@ -174,16 +175,16 @@ public class MemoryUsageTool implements Tool {
         SettingValue wm = settings.get("work_mem");
         if (wm != null && wm.valueMB() > memoryProps.getThresholdWorkMemMB()) {
             String desc = String.format("work_mem 配置过高: %d MB", wm.valueMB());
-            findings.add(finding("MEDIUM", "WorkMem", desc));
-            suggestions.add(suggestion("MEDIUM",
+            findings.add(DiagnosticUtils.finding("MEDIUM", "WorkMem", desc));
+            suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                     "work_mem 值较大，并发排序查询时可能耗尽内存",
                     "work_mem " + wm.valueMB() + " MB > " + memoryProps.getThresholdWorkMemMB() + " MB"));
         }
 
-        suggestions = dedupByAction(suggestions);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
 
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", determineRisk(findings).name());
+        detail.put("risk", DiagnosticUtils.determineRisk(findings).name());
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
 
@@ -207,18 +208,6 @@ public class MemoryUsageTool implements Tool {
         return detail;
     }
 
-    // ---- Risk 聚合 ----
-
-    RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
-    }
-
-    // ---- 格式化 ----
-
     @SuppressWarnings("unchecked")
     String buildSummary(Map<String, Object> detail) {
         String risk = (String) detail.get("risk");
@@ -227,37 +216,5 @@ public class MemoryUsageTool implements Tool {
             return "内存配置及缓存命中率正常，风险等级 " + risk;
         }
         return "检测到 " + findings.size() + " 个内存问题，风险等级 " + risk;
-    }
-
-    private static String formatPercent(double v) {
-        return String.format("%.0f%%", v * 100);
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
-    }
-
-    // ---- Helpers ----
-
-    private Map<String, String> finding(String level, String nodeType, String desc) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("level", level);
-        m.put("nodeType", nodeType);
-        m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
-        return m;
     }
 }

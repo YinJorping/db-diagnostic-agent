@@ -1,5 +1,6 @@
 package com.diagnostic.agent.tool;
 
+import com.diagnostic.agent.common.util.FormatUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -61,21 +62,21 @@ public class JvmUsageTool implements Tool {
                         heapRatio * 100,
                         m.heapUsedBytes() / (1024 * 1024),
                         m.heapMaxBytes() / (1024 * 1024));
-                findings.add(finding("HIGH", "HeapUsage", desc));
-                suggestions.add(suggestion("HIGH",
-                        "堆内存使用率超过 " + formatPercent(jvmProps.getThresholdHeapHigh())
+                findings.add(DiagnosticUtils.finding("HIGH", "HeapUsage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
+                        "堆内存使用率超过 " + FormatUtil.formatPercent(jvmProps.getThresholdHeapHigh())
                                 + "，建议排查内存泄漏或增大 -Xmx",
-                        "堆使用率 " + formatPercent(heapRatio)));
+                        "堆使用率 " + FormatUtil.formatPercent(heapRatio)));
             } else if (heapRatio > jvmProps.getThresholdHeapMedium()) {
                 String desc = String.format("堆内存使用率偏高: %.1f%% (%d / %d MB)",
                         heapRatio * 100,
                         m.heapUsedBytes() / (1024 * 1024),
                         m.heapMaxBytes() / (1024 * 1024));
-                findings.add(finding("MEDIUM", "HeapUsage", desc));
-                suggestions.add(suggestion("MEDIUM",
-                        "堆内存使用率超过 " + formatPercent(jvmProps.getThresholdHeapMedium())
+                findings.add(DiagnosticUtils.finding("MEDIUM", "HeapUsage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
+                        "堆内存使用率超过 " + FormatUtil.formatPercent(jvmProps.getThresholdHeapMedium())
                                 + "，建议关注 GC 频率和内存趋势",
-                        "堆使用率 " + formatPercent(heapRatio)));
+                        "堆使用率 " + FormatUtil.formatPercent(heapRatio)));
             }
         }
 
@@ -87,11 +88,11 @@ public class JvmUsageTool implements Tool {
                         nonHeapRatio * 100,
                         m.nonHeapUsedBytes() / (1024 * 1024),
                         m.nonHeapCommittedBytes() / (1024 * 1024));
-                findings.add(finding("HIGH", "NonHeapUsage", desc));
-                suggestions.add(suggestion("HIGH",
-                        "Metaspace 使用率超过 " + formatPercent(jvmProps.getThresholdNonHeapHigh())
+                findings.add(DiagnosticUtils.finding("HIGH", "NonHeapUsage", desc));
+                suggestions.add(DiagnosticUtils.suggestion("HIGH",
+                        "Metaspace 使用率超过 " + FormatUtil.formatPercent(jvmProps.getThresholdNonHeapHigh())
                                 + "，建议检查类加载泄漏或增大 -XX:MaxMetaspaceSize",
-                        "非堆使用率 " + formatPercent(nonHeapRatio)));
+                        "非堆使用率 " + FormatUtil.formatPercent(nonHeapRatio)));
             }
         }
 
@@ -99,17 +100,17 @@ public class JvmUsageTool implements Tool {
         if (m.threadCount() > jvmProps.getThresholdThreadCount()) {
             String desc = String.format("线程数过多: %d (peak: %d, daemon: %d)",
                     m.threadCount(), m.peakThreadCount(), m.daemonThreadCount());
-            findings.add(finding("MEDIUM", "ThreadCount", desc));
-            suggestions.add(suggestion("MEDIUM",
+            findings.add(DiagnosticUtils.finding("MEDIUM", "ThreadCount", desc));
+            suggestions.add(DiagnosticUtils.suggestion("MEDIUM",
                     "当前线程数 " + m.threadCount() + " 超过阈值 "
                             + jvmProps.getThresholdThreadCount() + "，可能存在线程泄漏",
                     "threadCount " + m.threadCount() + " > " + jvmProps.getThresholdThreadCount()));
         }
 
-        suggestions = dedupByAction(suggestions);
+        suggestions = DiagnosticUtils.dedupByAction(suggestions);
 
         Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("risk", determineRisk(findings).name());
+        detail.put("risk", DiagnosticUtils.determineRisk(findings).name());
         detail.put("findings", findings);
         detail.put("suggestions", suggestions);
         detail.put("metrics", Map.of(
@@ -136,18 +137,6 @@ public class JvmUsageTool implements Tool {
         return detail;
     }
 
-    // ---- Risk 聚合 ----
-
-    RiskLevel determineRisk(List<Map<String, String>> findings) {
-        boolean hasHigh = findings.stream().anyMatch(f -> "HIGH".equals(f.get("level")));
-        boolean hasMedium = findings.stream().anyMatch(f -> "MEDIUM".equals(f.get("level")));
-        if (hasHigh) return RiskLevel.HIGH;
-        if (hasMedium) return RiskLevel.MEDIUM;
-        return RiskLevel.LOW;
-    }
-
-    // ---- 格式化 ----
-
     @SuppressWarnings("unchecked")
     String buildSummary(Map<String, Object> detail) {
         String risk = (String) detail.get("risk");
@@ -156,37 +145,5 @@ public class JvmUsageTool implements Tool {
             return "JVM 资源使用正常，风险等级 " + risk;
         }
         return "检测到 " + findings.size() + " 个 JVM 资源问题，风险等级 " + risk;
-    }
-
-    private static String formatPercent(double v) {
-        return String.format("%.0f%%", v * 100);
-    }
-
-    // ---- 去重 ----
-
-    List<Map<String, String>> dedupByAction(List<Map<String, String>> suggestions) {
-        Map<String, Map<String, String>> dedup = new LinkedHashMap<>();
-        for (Map<String, String> s : suggestions) {
-            dedup.putIfAbsent(s.get("action"), s);
-        }
-        return new ArrayList<>(dedup.values());
-    }
-
-    // ---- Helpers ----
-
-    private Map<String, String> finding(String level, String nodeType, String desc) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("level", level);
-        m.put("nodeType", nodeType);
-        m.put("description", desc);
-        return m;
-    }
-
-    private Map<String, String> suggestion(String priority, String action, String reason) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("priority", priority);
-        m.put("action", action);
-        m.put("reason", reason);
-        return m;
     }
 }
