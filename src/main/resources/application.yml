@@ -32,10 +32,21 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health, info
   endpoint:
     health:
       show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+# ---- 应用信息（Actuator /actuator/info） ----
+info:
+  app:
+    name: "@project.name@"
+    version: "@project.version@"
+    description: "@project.description@"
+    java: "@java.version@"
 
 # ---- 诊断平台配置 ----
 diagnostic:

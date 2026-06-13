@@ -1,8 +1,14 @@
+# DB Diagnostic Agent CI Pipeline
+# 触发条件: 每次 push 到 master
+# 环境: Maven 3.9 + Eclipse Temurin 21 (无 Docker)
+# IT 测试需要 Docker，在 CI 中跳过 (mvn verify -DskipITs)
+# 本地完整验证: docker info && mvn clean verify
+
 image: maven:3.9-eclipse-temurin-21
 
 stages:
   - build
-  - test
+  - verify
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2"
@@ -16,11 +22,14 @@ build:
   script:
     - mvn compile -q
 
-unit-test:
-  stage: test
+verify:
+  stage: verify
   script:
-    - mvn test
+    - mvn verify -DskipITs
   artifacts:
     reports:
       junit:
         - target/surefire-reports/TEST-*.xml
+    paths:
+      - target/site/jacoco/
+    expire_in: 7 days

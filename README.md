@@ -137,6 +137,49 @@ GET /api/diagnose/stream?sessionId=demo-001&problem=SELECT * FROM orders
 
 事件序列: `START` → `ROUTING` → `AGENT_START` → `AGENT_DONE` → `COMPLETE`
 
+### 请求时序
+
+```
+Client                  Controller         Orchestrator       AgentRouter       Agent(s)           Tool(s)            LLM
+  │                         │                    │                  │                │                  │                │
+  │  POST /api/diagnose     │                    │                  │                │                  │                │
+  │────────────────────────►│                    │                  │                │                  │                │
+  │                         │  diagnose()        │                  │                │                  │                │
+  │                         │───────────────────►│                  │                │                  │                │
+  │                         │                    │  routeAll()      │                │                  │                │
+  │                         │                    │─────────────────►│                │                  │                │
+  │                         │                    │  List<Agent>     │                │                  │                │
+  │                         │                    │◄─────────────────│                │                  │                │
+  │                         │                    │                  │                │                  │                │
+  │                         │                    │  CompletableFuture.allOf()                     │                  │                │
+  │                         │                    │──────────────────┬───────────────┬──────────────┤                  │                │
+  │                         │                    │                  │  diagnose()    │              │                  │                │
+  │                         │                    │                  │◄───────────────┤              │                  │                │
+  │                         │                    │                  │  execute()     │              │                  │                │
+  │                         │                    │                  │──────────────────────────────►│                  │                │
+  │                         │                    │                  │  ToolResult    │              │                  │                │
+  │                         │                    │                  │◄──────────────────────────────│                  │                │
+  │                         │                    │                  │  chat(prompt)  │              │                  │                │
+  │                         │                    │                  │─────────────────────────────────────────────────►│
+  │                         │                    │                  │  llmResponse   │              │                  │                │
+  │                         │                    │                  │◄─────────────────────────────────────────────────│
+  │                         │                    │  AgentResult[]   │                │              │                  │                │
+  │                         │                    │◄─────────────────┴────────────────┴──────────────┘                  │                │
+  │                         │  aggregateRisk()   │                                                                      │
+  │                         │  + buildReport()   │                                                                      │
+  │  ApiResponse            │◄───────────────────│                                                                      │
+  │◄────────────────────────│                    │                                                                      │
+  │                         │                    │                                                                      │
+  │  (SSE: event-by-event streaming for each agent start/done)                                                           │
+```
+
+### 运维端点
+
+```http
+GET /actuator/health    # 健康检查 (DB, Redis, diskSpace)
+GET /actuator/info      # 版本信息
+```
+
 ## 项目结构
 
 ```
@@ -282,4 +325,7 @@ Total: 252 PASS
 
 ## CI
 
-每次 push 自动触发 GitCode CI：`mvn compile` + `mvn test`（详见 `.gitcode-ci.yml`）。
+每次 push 自动触发 GitCode CI：
+- `mvn compile` — 编译检查
+- `mvn verify -DskipITs` — 单元测试 + JaCoCo 覆盖率报告（详见 `.gitcode-ci.yml`）
+- IT 测试需本地 Docker：`docker info && mvn clean verify`
