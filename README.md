@@ -2,7 +2,7 @@
 
 **Orchestrator + Multi-Expert Agent 协作的数据库智能诊断平台**
 
-Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · Testcontainers
+Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · Testcontainers · Micrometer + Prometheus · LangChain4j 1.10.0
 
 ---
 
@@ -176,8 +176,89 @@ Client                  Controller         Orchestrator       AgentRouter       
 ### 运维端点
 
 ```http
-GET /actuator/health    # 健康检查 (DB, Redis, diskSpace)
-GET /actuator/info      # 版本信息
+GET /actuator/health       # 健康检查 (DB, Redis, LLM, diskSpace)
+GET /actuator/info         # 版本信息
+GET /actuator/prometheus   # Prometheus 指标暴露
+GET /api/traces?sessionId= # 查询执行追踪
+GET /api/traces?traceId=   # 按 traceId 查询
+```
+
+---
+
+## 可观测性 (v2.1)
+
+### Execution Trace
+
+每次诊断自动生成 `traceId` (UUID)，记录完整执行过程：
+
+| 记录类型 | 内容 |
+|----------|------|
+| ToolCallRecord | toolName, inputParams, outputSummary, durationMs, success |
+| LlmCallRecord | promptTokens, completionTokens, latencyMs |
+
+```http
+GET /api/traces?traceId=a1b2c3d4
+GET /api/traces?sessionId=demo-001
+```
+
+### Micrometer 指标
+
+| 指标名 | 类型 | 标签 |
+|--------|------|------|
+| `agent.diagnosis.latency` | Timer | agent |
+| `tool.execution.latency` | Timer | tool |
+| `tool.execution.failure` | Counter | tool |
+| `llm.call.latency` | Timer | provider |
+| `llm.call.failure` | Counter | provider |
+| `llm.tokens` | Counter | provider, type(prompt/completion) |
+| `diagnosis.count` | Counter | agent, outcome(success/failure) |
+
+```bash
+curl localhost:8080/actuator/prometheus | grep -E "(agent_diagnosis|tool_execution|llm_call)"
+```
+
+---
+
+## Prompt 评测体系 (v2.2)
+
+### 评分维度
+
+| 维度 | 计算方式 | 范围 |
+|------|---------|------|
+| AgentMatch | actualAgent == expectedAgent | 0.0 / 1.0 |
+| RiskMatch | actualRisk == expectedRisk | 0.0 / 1.0 |
+| KeywordCoverage | matchedKeywords / expectedKeywords | 0.0-1.0 |
+| RecommendationCoverage | matchedRecommendations / expectedRecommendations | 0.0-1.0 |
+
+### Benchmark 用例
+
+10 条 YAML 用例覆盖 5 个诊断领域：SQL(3) + CPU(2) + Memory(2) + JVM(2) + Disk(1)
+
+### API
+
+```http
+# 触发评测
+POST /api/eval/run
+{"domain": "sql", "mode": "AUTO"}
+→ {"runId": "uuid", "status": "RUNNING"}
+
+# 查询报告
+GET /api/eval/report/{runId}
+→ {"metrics": {"agentAccuracy": 0.90, "keywordCoverage": 0.78, ...}, "results": [...]}
+```
+
+### Prompt 覆盖
+
+通过 `promptOverrides` 参数实现 A/B 对比，无需修改数据库：
+
+```http
+POST /api/eval/run
+{
+  "domain": "sql",
+  "promptOverrides": {
+    "sql_diagnosis_system": "你是一位资深DBA...（新版prompt）"
+  }
+}
 ```
 
 ## 项目结构
@@ -210,11 +291,13 @@ src/main/java/com/diagnostic/agent/
 │   ├── JvmMetrics.java / JvmMetricsProvider / JmxJvmMetricsProvider / JvmUsageTool.java
 │   └── DiskMetrics.java / DiskMetricsProvider / FileStoreDiskMetricsProvider / DiskUsageTool.java
 ├── controller/    # REST + SSE 端点
+	├── trace/         # ExecutionTrace (POJO + Repository + Controller)
+	├── eval/          # EvalCase, EvalRunner, EvalScorer, PromptOverrideManager
 ├── memory/        # ChatMemoryStore (InMemory / Redis)
 ├── repository/    # JPA Entity + Repository
 ├── common/        # ApiResponse, BusinessException, GlobalExceptionHandler
 │   └── util/      # FormatUtil (公共格式化)
-├── config/        # TraceIdFilter, DevContainersConfig, AgentExecutorConfig
+├── config/        # TraceIdFilter, DevContainersConfig, AgentExecutorConfig, DiagnosticMetrics
 └── workflow/      # Phase 2 预留
 ```
 
@@ -347,10 +430,10 @@ curl -X POST http://localhost:8080/api/diagnose \
 ## 测试
 
 ```
-Unit:  200 PASS — *Test.java
+Unit:  238 PASS — *Test.java
 IT:    62 PASS  — *IT.java
 Smoke:  1 PASS — DeepSeekSmokeTest
-Total: 263 PASS
+Total: 301 PASS
 ```
 
 ### 测试覆盖
@@ -371,7 +454,14 @@ Total: 263 PASS
 | MemoryDiagnosisAgentTest | 6 | Prompt 验证 |
 | DiskDiagnosisAgentTest | 6 | Prompt 验证 |
 | BaseExpertAgentTest | 11 | Risk 聚合、异常降级、Tool 跳过 |
-| **Unit 小计** | **200** | |
+| ExecutionTraceTest | 7 | POJO 结构、ToolCallRecord/LlmCallRecord |
+| InMemoryExecutionTraceRepositoryTest | 5 | 存取、按 traceId/sessionId 查询 |
+| DiagnosticMetricsTest | 8 | 7 个 Micrometer 指标验证 |
+| EvalScorerTest | 9 | 4 维评分：AgentMatch/RiskMatch/Keyword/Recommendation |
+| EvalRunnerTest | 2 | 异步执行、StubAgent 全链路 |
+| EvalControllerTest | 3 | Run/Report 端点 MockMvc |
+| EvalCaseLoaderTest | 5 | YAML 加载、域过滤、字段解析 |
+| **Unit 小计** | **238** | |
 | OrchestratorAgentIT | 9 | 1-5 Agent 并行、异常隔离、历史上下文 |
 | RepositoryIT | 7 | Flyway 7 模板、JPA CRUD |
 | SlowQueryToolIT | 11 | pg_stat_statements 真实查询 |
@@ -386,7 +476,7 @@ Total: 263 PASS
 | RedisChatMemoryStoreIT | 6 | Redis 会话记忆 |
 | **IT 小计** | **62** | |
 | DeepSeekSmokeTest | 1 | 真实 DeepSeek API 调用（需环境变量） |
-| **总计** | **263** | |
+| **总计** | **301** | |
 
 ## 重构记录
 
@@ -394,6 +484,8 @@ Total: 263 PASS
 |-------|------|------|
 | Day11 | DiagnosticUtils + FormatUtil 提取 | 消除 Tool 层 154 行重复代码，determineRisk/dedupByAction/suggestion 从 6→1 |
 | Phase2-P0 | 真实 LLM 接入 | Jackson DTO + OpenAiCompatibleLlmClient + HealthIndicator + 可扩展 Provider Map |
+| Phase2-P1 | Execution Trace + Micrometer | 7 个 Prometheus 指标 + UUID 执行追踪 + /api/traces REST API |
+| Phase2-P2 | Prompt 评测体系 | 4 维评分 + 10 条 benchmark + EvalRunner + /api/eval/run 端点 |
 
 ## 设计原则
 
@@ -409,8 +501,10 @@ Total: 263 PASS
 |-------|------|------|
 | Phase 1 | 5 维度诊断闭环（SQL + CPU + Memory + JVM + Disk） | done |
 | Phase 1.5 | Refactor Sprint（DiagnosticUtils + FormatUtil 提取） | done |
-| Phase 2-P0 | 真实 LLM 接入（DeepSeek + OpenAI 兼容协议, Jackson DTO, HealthIndicator） | done |
-| Phase 2 | MCP, Grafana, 连续采样, Disk/Network 扩展 | pending |
+| Phase 2-P0 | 真实 LLM 接入（DeepSeek + OpenAI 兼容协议） | done |
+| Phase 2-P1 | Execution Trace + Micrometer（v2.1-observability） | done |
+| Phase 2-P2 | Prompt 评测体系（v2.2-eval） | done |
+| Phase 2-P3 | Prompt 优化迭代 + 案例库扩展 + Tool Calling POC | pending |
 
 ## CI
 
