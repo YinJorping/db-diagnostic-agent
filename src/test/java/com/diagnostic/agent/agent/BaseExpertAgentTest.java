@@ -1,11 +1,15 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.memory.MessageType;
 import com.diagnostic.agent.memory.StoredMessage;
 import com.diagnostic.agent.tool.RiskLevel;
 import com.diagnostic.agent.tool.Tool;
 import com.diagnostic.agent.tool.ToolRegistry;
 import com.diagnostic.agent.tool.ToolResult;
+import com.diagnostic.agent.trace.ExecutionTrace;
+import com.diagnostic.agent.trace.ExecutionTraceRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,12 +33,17 @@ class BaseExpertAgentTest {
     @Mock private PromptService promptService;
     @Mock private LlmClient llmClient;
     @Mock private PromptContextBuilder promptContextBuilder;
+    @Mock private ExecutionTraceRepository traceRepository;
+    private final DiagnosticMetrics metrics = new DiagnosticMetrics(new SimpleMeterRegistry());
 
     private TestAgent agent;
+    private ExecutionTrace trace;
 
     @BeforeEach
     void setup() {
-        agent = new TestAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
+        agent = new TestAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
+                traceRepository, metrics);
+        trace = new ExecutionTrace("test-trace", "TestAgent", "test-session", 0);
     }
 
     // ---- 1. Tool 过滤：按名选择，跳过不存在的 ----
@@ -61,7 +70,7 @@ class BaseExpertAgentTest {
         agent.setAssignedTools(List.of("bad"));
         when(toolRegistry.get("bad")).thenReturn(Optional.of(badTool));
 
-        List<ToolResult> results = agent.executeTools(agent.selectTools(), "test");
+        List<ToolResult> results = agent.executeTools(agent.selectTools(), "test", trace);
 
         assertThat(results).hasSize(1);
         ToolResult result = results.get(0);
@@ -137,7 +146,7 @@ class BaseExpertAgentTest {
         // 覆写 shouldExecuteTool 跳过 t2
         agent.setSkipTool("t2");
 
-        List<ToolResult> results = agent.executeTools(agent.selectTools(), "test");
+        List<ToolResult> results = agent.executeTools(agent.selectTools(), "test", trace);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getToolName()).isEqualTo("t1");
@@ -162,7 +171,7 @@ class BaseExpertAgentTest {
         agent.setToolParams(Map.of("customKey", "customValue"));
         when(toolRegistry.get("paramTool")).thenReturn(Optional.of(paramTool));
 
-        agent.executeTools(agent.selectTools(), "test");
+        agent.executeTools(agent.selectTools(), "test", trace);
 
         assertThat(captured.get()).isNotNull();
         assertThat(captured.get()).containsEntry("customKey", "customValue");
@@ -241,8 +250,9 @@ class BaseExpertAgentTest {
         private String skipToolName;
         private Map<String, Object> toolParams;
 
-        TestAgent(ToolRegistry registry, PromptService prompts, LlmClient llm, PromptContextBuilder pcb) {
-            super(registry, prompts, llm, pcb);
+        TestAgent(ToolRegistry registry, PromptService prompts, LlmClient llm,
+                  PromptContextBuilder pcb, ExecutionTraceRepository traceRepo, DiagnosticMetrics m) {
+            super(registry, prompts, llm, pcb, traceRepo, m);
         }
 
         void setAssignedTools(List<String> names) { this.assignedTools = names; }

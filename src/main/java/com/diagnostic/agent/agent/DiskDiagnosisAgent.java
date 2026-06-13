@@ -1,7 +1,9 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.Tool;
 import com.diagnostic.agent.tool.ToolRegistry;
+import com.diagnostic.agent.trace.ExecutionTraceRepository;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -21,8 +23,10 @@ public class DiskDiagnosisAgent extends BaseExpertAgent {
     public DiskDiagnosisAgent(ToolRegistry toolRegistry,
                               PromptService promptService,
                               LlmClient llmClient,
-                              PromptContextBuilder promptContextBuilder) {
-        super(toolRegistry, promptService, llmClient, promptContextBuilder);
+                              PromptContextBuilder promptContextBuilder,
+                              ExecutionTraceRepository traceRepository,
+                              DiagnosticMetrics metrics) {
+        super(toolRegistry, promptService, llmClient, promptContextBuilder, traceRepository, metrics);
     }
 
     @Override

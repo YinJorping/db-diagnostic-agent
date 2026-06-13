@@ -1,6 +1,8 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.ToolRegistry;
+import com.diagnostic.agent.trace.ExecutionTraceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +20,9 @@ class AgentRouterTest {
     @Mock private PromptService promptService;
     @Mock private LlmClient llmClient;
     @Mock private PromptContextBuilder promptContextBuilder;
+    @Mock private ExecutionTraceRepository traceRepository;
+    private final DiagnosticMetrics metrics =
+            new DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private AgentRouter router;
     private SqlDiagnosisAgent sqlAgent;
@@ -28,7 +33,8 @@ class AgentRouterTest {
 
     @BeforeEach
     void setup() {
-        sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
+        sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
+                traceRepository, metrics);
         cpuAgent = new TestKeywordAgent("CpuAgent", List.of("cpu", "负载", "load", "CPU飙高", "CPU 100%"));
         memoryAgent = new TestKeywordAgent("MemoryAgent",
                 List.of("内存", "memory", "缓存", "buffer", "shared_buffers", "work_mem", "命中率", "内存不足"));

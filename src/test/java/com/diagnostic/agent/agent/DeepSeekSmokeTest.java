@@ -1,6 +1,8 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +26,7 @@ class DeepSeekSmokeTest {
 
     private static final Path RESULTS = Paths.get("target/smoke-test-results.md");
     private static final ObjectMapper mapper = new ObjectMapper();
+    private static final DiagnosticMetrics metrics = new DiagnosticMetrics(new SimpleMeterRegistry());
 
     @BeforeAll
     static void checkApiKey() {
@@ -46,7 +49,7 @@ class DeepSeekSmokeTest {
                         "deepseek-chat",
                         "https://api.deepseek.com/v1")));
 
-        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, mapper);
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(props, mapper, metrics);
 
         Instant start = Instant.now();
         String result = client.chat(

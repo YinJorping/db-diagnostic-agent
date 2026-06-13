@@ -1,9 +1,13 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.RiskLevel;
 import com.diagnostic.agent.tool.Tool;
 import com.diagnostic.agent.tool.ToolRegistry;
 import com.diagnostic.agent.tool.ToolResult;
+import com.diagnostic.agent.trace.ExecutionTrace;
+import com.diagnostic.agent.trace.ExecutionTraceRepository;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 专家 Agent 抽象基类——模板方法模式。
@@ -26,15 +31,21 @@ public abstract class BaseExpertAgent implements Agent {
     protected final PromptService promptService;
     protected final LlmClient llmClient;
     protected final PromptContextBuilder promptContextBuilder;
+    protected final ExecutionTraceRepository traceRepository;
+    protected final DiagnosticMetrics metrics;
 
     protected BaseExpertAgent(ToolRegistry toolRegistry,
                               PromptService promptService,
                               LlmClient llmClient,
-                              PromptContextBuilder promptContextBuilder) {
+                              PromptContextBuilder promptContextBuilder,
+                              ExecutionTraceRepository traceRepository,
+                              DiagnosticMetrics metrics) {
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
         this.llmClient = llmClient;
         this.promptContextBuilder = promptContextBuilder;
+        this.traceRepository = traceRepository;
+        this.metrics = metrics;
     }
 
     // ---- 子类必须实现 ----
@@ -61,25 +72,50 @@ public abstract class BaseExpertAgent implements Agent {
 
     @Override
     public DiagnosisResult diagnose(DiagnosisContext ctx) {
+        String traceId = UUID.randomUUID().toString();
         long start = System.currentTimeMillis();
+        ExecutionTrace trace = new ExecutionTrace(traceId, getName(), ctx.sessionId(), start);
+        Timer.Sample agentSample = metrics.startTimer();
+
         try {
             String historyText = promptContextBuilder.buildContext(ctx.sessionId());
 
             List<Tool> tools = selectTools();
-            List<ToolResult> toolResults = executeTools(tools, ctx.problem());
+            List<ToolResult> toolResults = executeTools(tools, ctx.problem(), trace);
             String toolResultsText = formatToolResults(toolResults);
             String userPrompt = buildUserPrompt(ctx.problem(), toolResultsText, historyText);
             String promptKey = getSystemPromptTemplateKey();
             String systemPrompt = promptService.loadTemplate(promptKey);
             log.info("Agent [{}] LLM 调用: promptKey={}, sessionId={}", getName(), promptKey, ctx.sessionId());
+
+            long llmStart = System.currentTimeMillis();
             String llmResponse = llmClient.chat(systemPrompt, userPrompt);
+            long llmLatency = System.currentTimeMillis() - llmStart;
+            LlmClient.LlmUsage usage = llmClient.lastUsage();
+            trace.addLlmCall(new ExecutionTrace.LlmCallRecord(
+                    usage != null ? usage.promptTokens() : -1,
+                    usage != null ? usage.completionTokens() : -1,
+                    llmLatency));
+
             RiskLevel risk = aggregateRisk(toolResults);
 
             long elapsed = System.currentTimeMillis() - start;
+            trace.complete(llmResponse, true, System.currentTimeMillis());
+            traceRepository.save(trace);
+
+            metrics.incrementDiagnosis(getName(), "success");
+            agentSample.stop(metrics.agentLatency(getName()));
+
             return DiagnosisResult.success(getName(), llmResponse, llmResponse, risk, elapsed);
         } catch (Exception e) {
             log.error("Agent [{}] 诊断失败: sessionId={}, {}", getName(), ctx.sessionId(), e.getMessage(), e);
             long elapsed = System.currentTimeMillis() - start;
+            trace.complete(e.getMessage(), false, System.currentTimeMillis());
+            traceRepository.save(trace);
+
+            metrics.incrementDiagnosis(getName(), "failure");
+            agentSample.stop(metrics.agentLatency(getName()));
+
             return DiagnosisResult.failure(getName(), e.getMessage());
         }
     }
@@ -103,18 +139,32 @@ public abstract class BaseExpertAgent implements Agent {
     // ---- Tool 执行 ----
 
     /** 执行所有 Tool，异常降级为 ToolResult.failure()。 */
-    protected List<ToolResult> executeTools(List<Tool> tools, String problem) {
+    protected List<ToolResult> executeTools(List<Tool> tools, String problem, ExecutionTrace trace) {
         List<ToolResult> results = new ArrayList<>();
         for (Tool tool : tools) {
             if (!shouldExecuteTool(tool, problem)) {
                 log.debug("Agent [{}] 跳过 Tool [{}]", getName(), tool.getName());
                 continue;
             }
+            Map<String, Object> params = buildToolParameters(tool, problem);
+            Timer.Sample toolSample = metrics.startTimer();
+            long toolStart = System.currentTimeMillis();
             try {
-                results.add(tool.execute(buildToolParameters(tool, problem)));
+                ToolResult result = tool.execute(params);
+                long toolElapsed = System.currentTimeMillis() - toolStart;
+                toolSample.stop(metrics.toolLatency(tool.getName()));
+                trace.addToolCall(new ExecutionTrace.ToolCallRecord(
+                        tool.getName(), params, result.getSummary(), toolElapsed, result.isSuccess()));
+                results.add(result);
             } catch (Exception e) {
+                long toolElapsed = System.currentTimeMillis() - toolStart;
+                toolSample.stop(metrics.toolLatency(tool.getName()));
+                metrics.incrementToolFailure(tool.getName());
                 log.warn("Agent [{}] Tool [{}] 执行异常: {}", getName(), tool.getName(), e.getMessage());
-                results.add(ToolResult.failure(tool.getName(), e.getMessage()));
+                ToolResult failure = ToolResult.failure(tool.getName(), e.getMessage());
+                trace.addToolCall(new ExecutionTrace.ToolCallRecord(
+                        tool.getName(), params, e.getMessage(), toolElapsed, false));
+                results.add(failure);
             }
         }
         return results;

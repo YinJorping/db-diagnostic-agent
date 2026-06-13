@@ -29,6 +29,9 @@ class JvmDiagnosisAgentTest {
     @Mock private LlmClient llmClient;
     @Mock private PromptContextBuilder promptContextBuilder;
     @Mock private JvmMetricsProvider jvmMetricsProvider;
+    @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
+    private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
+            new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private JvmUsageTool jvmUsageTool;
     private JvmDiagnosisAgent agent;
@@ -36,7 +39,8 @@ class JvmDiagnosisAgentTest {
     @BeforeEach
     void setup() {
         jvmUsageTool = spy(new JvmUsageTool(jvmMetricsProvider, new JvmProperties()));
-        agent = new JvmDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
+        agent = new JvmDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
+                traceRepository, metrics);
     }
 
     @Test

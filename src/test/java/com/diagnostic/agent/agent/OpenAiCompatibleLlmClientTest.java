@@ -1,7 +1,9 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ class OpenAiCompatibleLlmClientTest {
     private int port;
     private OpenAiCompatibleLlmClient client;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final DiagnosticMetrics metrics = new DiagnosticMetrics(new SimpleMeterRegistry());
 
     @BeforeEach
     void setup() throws IOException {
@@ -39,7 +42,7 @@ class OpenAiCompatibleLlmClientTest {
         props.setProviders(Map.of("deepseek",
                 new LlmProperties.ProviderConfig("sk-test", "deepseek-chat",
                         "http://localhost:" + port)));
-        return new OpenAiCompatibleLlmClient(props, mapper);
+        return new OpenAiCompatibleLlmClient(props, mapper, metrics);
     }
 
     @Test

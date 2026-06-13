@@ -28,6 +28,9 @@ class CpuDiagnosisAgentTest {
     @Mock private LlmClient llmClient;
     @Mock private PromptContextBuilder promptContextBuilder;
     @Mock private CpuMetricsProvider cpuMetricsProvider;
+    @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
+    private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
+            new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private com.diagnostic.agent.tool.CpuUsageTool cpuUsageTool;
     private CpuDiagnosisAgent agent;
@@ -36,7 +39,8 @@ class CpuDiagnosisAgentTest {
     void setup() {
         cpuUsageTool = spy(new com.diagnostic.agent.tool.CpuUsageTool(cpuMetricsProvider,
                 new com.diagnostic.agent.tool.CpuProperties()));
-        agent = new CpuDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder);
+        agent = new CpuDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
+                traceRepository, metrics);
     }
 
     @Test

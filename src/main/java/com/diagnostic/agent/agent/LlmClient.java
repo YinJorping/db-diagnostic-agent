@@ -14,4 +14,11 @@ public interface LlmClient {
      * @return 模型回复文本
      */
     String chat(String systemPrompt, String userPrompt);
+
+    /** 返回最近一次调用的 token 使用量，不支持时返回 null。 */
+    default LlmUsage lastUsage() {
+        return null;
+    }
+
+    record LlmUsage(int promptTokens, int completionTokens) {}
 }
