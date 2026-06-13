@@ -18,7 +18,7 @@ CREATE TABLE session (
 CREATE TABLE diagnosis_record (
     id          BIGSERIAL       PRIMARY KEY,
     session_id  VARCHAR(64)     NOT NULL REFERENCES session(session_id),
-    agent_name  VARCHAR(64),
+    agent_name  VARCHAR(255),
     problem     TEXT            NOT NULL,
     summary     TEXT,
     status      VARCHAR(32)     NOT NULL DEFAULT 'IN_PROGRESS',

@@ -20,7 +20,7 @@ public class DiagnosisRecord {
     @Column(name = "session_id", length = 64, nullable = false)
     private String sessionId;
 
-    @Column(name = "agent_name", length = 64)
+    @Column(name = "agent_name", length = 255)
     @Setter
     private String agentName;
 

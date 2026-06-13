@@ -1,0 +1,26 @@
+image: maven:3.9-eclipse-temurin-21
+
+stages:
+  - build
+  - test
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2"
+
+cache:
+  paths:
+    - .m2/
+
+build:
+  stage: build
+  script:
+    - mvn compile -q
+
+unit-test:
+  stage: test
+  script:
+    - mvn test
+  artifacts:
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml
