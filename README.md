@@ -231,7 +231,19 @@ src/main/java/com/diagnostic/agent/
 ```yaml
 diagnostic:
   llm:
-    provider: mock           # Phase 2 切换 deepseek/openai
+    provider: mock           # mock | deepseek | openai | moonshot
+    timeout: 30s
+    temperature: 0.3
+    max-tokens: 1024
+    providers:
+      deepseek:
+        api-key: ${DEEPSEEK_API_KEY:}
+        model: deepseek-chat
+        base-url: https://api.deepseek.com/v1
+      openai:
+        api-key: ${OPENAI_API_KEY:}
+        model: gpt-4o
+        base-url: https://api.openai.com/v1
   tool:
     timeout-seconds: 5
   executor:
@@ -262,12 +274,83 @@ diagnostic:
     threshold-free-bytes-low: 10737418240  # 10GB
 ```
 
+## 真实 LLM 接入
+
+### API Key 配置
+
+```bash
+# 环境变量（推荐）
+export DEEPSEEK_API_KEY=sk-your-key
+export OPENAI_API_KEY=sk-your-key
+```
+
+Key 通过 `${DEEPSEEK_API_KEY:}` 占位符注入 `application.yml`，不会泄露到 Git。
+
+### Provider 切换
+
+修改 `application.yml` 或启动参数：
+
+```yaml
+# 方式 1: 切换 DeepSeek
+diagnostic.llm.provider: deepseek
+
+# 方式 2: 切换 OpenAI
+diagnostic.llm.provider: openai
+
+# 方式 3: 新增 OpenAI 兼容 provider（Moonshot / OpenRouter）
+diagnostic.llm.providers.moonshot:
+  api-key: ${MOONSHOT_API_KEY:}
+  model: moonshot-v1-8k
+  base-url: https://api.moonshot.cn/v1
+```
+
+### 启动方式
+
+```bash
+# Mock 模式（默认，无需 API Key）
+mvn spring-boot:run
+
+# 真实 LLM 模式
+DEEPSEEK_API_KEY=sk-yours mvn spring-boot:run
+```
+
+### 验证方法
+
+```bash
+# 1. 健康检查
+curl http://localhost:8080/actuator/health | jq '.components.llm'
+
+# Mock 模式: { "llm": { "status": "UP", "details": { "provider": "mock" } } }
+# DeepSeek:  { "llm": { "status": "UP", "details": { "provider": "deepseek", "model": "deepseek-chat" } } }
+# 无 API Key: { "llm": { "status": "DOWN" } }
+
+# 2. Smoke Test
+DEEPSEEK_API_KEY=sk-yours mvn test -Dtest=DeepSeekSmokeTest
+
+# 3. 诊断调用
+curl -X POST http://localhost:8080/api/diagnose \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"test","problem":"SELECT * FROM orders WHERE status=pend"}'
+```
+
+### Smoke Test 结果 (2026-06-13)
+
+| 指标 | 值 |
+|------|-----|
+| Provider | deepseek |
+| Model | deepseek-chat |
+| Latency | 1771ms |
+| Prompt Tokens | 53 |
+| Completion Tokens | 54 |
+| Total Tokens | 107 |
+
 ## 测试
 
 ```
-Unit:  190 PASS — *Test.java
+Unit:  200 PASS — *Test.java
 IT:    62 PASS  — *IT.java
-Total: 252 PASS
+Smoke:  1 PASS — DeepSeekSmokeTest
+Total: 263 PASS
 ```
 
 ### 测试覆盖
@@ -280,12 +363,15 @@ Total: 252 PASS
 | MemoryUsageToolTest | 19 | 5 条内存规则、PG 多库、单位解析 |
 | DiskUsageToolTest | 13 | 3 条磁盘规则、PG I/O 不参与风险、DataSource 降级 |
 | DiagnosticUtilsTest | 14 | finding/suggestion/determineRisk/dedupByAction/formatPercent |
+| LlmPropertiesTest | 4 | 默认 mock、Provider 配置、多 provider 支持 |
+| LlmHealthIndicatorTest | 4 | Mock UP、无配置 DOWN、空白 Key DOWN、已配置 UP |
+| OpenAiCompatibleLlmClientTest | 2 | 真实 HttpServer 模拟 200/401 |
 | CpuDiagnosisAgentTest | 6 | Prompt 验证、Tool 注入 |
 | JvmDiagnosisAgentTest | 7 | 关键词收紧验证、Prompt 包含 Tool 结果 |
 | MemoryDiagnosisAgentTest | 6 | Prompt 验证 |
 | DiskDiagnosisAgentTest | 6 | Prompt 验证 |
 | BaseExpertAgentTest | 11 | Risk 聚合、异常降级、Tool 跳过 |
-| **Unit 小计** | **190** | |
+| **Unit 小计** | **200** | |
 | OrchestratorAgentIT | 9 | 1-5 Agent 并行、异常隔离、历史上下文 |
 | RepositoryIT | 7 | Flyway 7 模板、JPA CRUD |
 | SlowQueryToolIT | 11 | pg_stat_statements 真实查询 |
@@ -299,13 +385,15 @@ Total: 252 PASS
 | DiagnosisSseE2EIT | 2 | SSE 流式端到端 |
 | RedisChatMemoryStoreIT | 6 | Redis 会话记忆 |
 | **IT 小计** | **62** | |
-| **总计** | **252** | |
+| DeepSeekSmokeTest | 1 | 真实 DeepSeek API 调用（需环境变量） |
+| **总计** | **263** | |
 
 ## 重构记录
 
 | Phase | 内容 | 效果 |
 |-------|------|------|
 | Day11 | DiagnosticUtils + FormatUtil 提取 | 消除 Tool 层 154 行重复代码，determineRisk/dedupByAction/suggestion 从 6→1 |
+| Phase2-P0 | 真实 LLM 接入 | Jackson DTO + OpenAiCompatibleLlmClient + HealthIndicator + 可扩展 Provider Map |
 
 ## 设计原则
 
@@ -321,7 +409,8 @@ Total: 252 PASS
 |-------|------|------|
 | Phase 1 | 5 维度诊断闭环（SQL + CPU + Memory + JVM + Disk） | done |
 | Phase 1.5 | Refactor Sprint（DiagnosticUtils + FormatUtil 提取） | done |
-| Phase 2 | 真实 LLM 接入, MCP, Grafana, 连续采样, Disk/Network 扩展 | pending |
+| Phase 2-P0 | 真实 LLM 接入（DeepSeek + OpenAI 兼容协议, Jackson DTO, HealthIndicator） | done |
+| Phase 2 | MCP, Grafana, 连续采样, Disk/Network 扩展 | pending |
 
 ## CI
 

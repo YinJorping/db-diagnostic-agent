@@ -14,8 +14,11 @@ record ChatCompletionResponse(
         List<Choice> choices,
         Usage usage
 ) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record Choice(int index, Message message, @JsonProperty("finish_reason") String finishReason) {}
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record Message(String role, String content) {}
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record Usage(@JsonProperty("prompt_tokens") int promptTokens,
                  @JsonProperty("completion_tokens") int completionTokens,
                  @JsonProperty("total_tokens") int totalTokens) {}
