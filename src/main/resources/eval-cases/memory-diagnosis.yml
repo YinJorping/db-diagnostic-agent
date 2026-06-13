@@ -1,0 +1,32 @@
+domain: memory
+description: "内存诊断专家评估 — 缓存命中率/内存配置"
+cases:
+  - id: memory-001
+    description: "缓存命中率低 — shared_buffers不足导致磁盘读取频繁"
+    problem: "数据库缓存命中率低于95%，大量磁盘读取，怀疑shared_buffers配置不足"
+    expected:
+      agent: MemoryDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "缓存"
+        - "命中率"
+        - "shared_buffers"
+      minKeywordMatches: 2
+      recommendations:
+        - "增加shared_buffers"
+        - "内存配置调整"
+
+  - id: memory-002
+    description: "临时文件过多 — work_mem不足导致排序溢出到磁盘"
+    problem: "数据库临时文件数量突然增加到200以上，work_mem当前只有4MB，大量排序操作写入磁盘"
+    expected:
+      agent: MemoryDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "临时文件"
+        - "work_mem"
+        - "内存"
+      minKeywordMatches: 2
+      recommendations:
+        - "调整work_mem"
+        - "SQL优化"

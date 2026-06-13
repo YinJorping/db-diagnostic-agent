@@ -1,7 +1,9 @@
 package com.diagnostic.agent.agent;
 
 import com.diagnostic.agent.common.BusinessException;
+import com.diagnostic.agent.eval.PromptOverrideManager;
 import com.diagnostic.agent.repository.PromptTemplateRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -14,14 +16,24 @@ public class PromptService {
 
     private final PromptTemplateRepository repository;
 
+    @Autowired(required = false)
+    private PromptOverrideManager promptOverrideManager;
+
     public PromptService(PromptTemplateRepository repository) {
         this.repository = repository;
     }
 
     /**
      * 按 key 加载模板原始内容。模板不存在时抛出 BusinessException。
+     * 优先查询 PromptOverrideManager（评测时的运行时覆盖），无覆盖则走 DB。
      */
     public String loadTemplate(String templateKey) {
+        if (promptOverrideManager != null) {
+            String override = promptOverrideManager.get(templateKey);
+            if (override != null) {
+                return override;
+            }
+        }
         return repository.findByTemplateKey(templateKey)
                 .orElseThrow(() -> BusinessException.notFound("模板未找到: " + templateKey))
                 .getContent();

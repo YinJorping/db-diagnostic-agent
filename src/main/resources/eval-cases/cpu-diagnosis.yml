@@ -1,0 +1,31 @@
+domain: cpu
+description: "CPU诊断专家评估 — CPU使用率/系统负载"
+cases:
+  - id: cpu-001
+    description: "CPU使用率飙高 — 数据库进程CPU占用异常"
+    problem: "数据库服务器CPU使用率持续在95%以上，系统响应变慢，top显示postgres进程CPU占用很高"
+    expected:
+      agent: CpuDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "CPU"
+        - "负载"
+        - "进程"
+      minKeywordMatches: 2
+      recommendations:
+        - "慢查询优化"
+        - "连接数检查"
+
+  - id: cpu-002
+    description: "系统负载异常 — Load Average超过CPU核心数"
+    problem: "服务器Load Average达到8，但只有4核CPU，系统整体响应变慢"
+    expected:
+      agent: CpuDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "负载"
+        - "CPU"
+      minKeywordMatches: 1
+      recommendations:
+        - "进程排查"
+        - "资源限制"

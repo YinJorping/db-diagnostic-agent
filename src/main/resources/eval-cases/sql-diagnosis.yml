@@ -1,0 +1,47 @@
+domain: sql
+description: "SQL诊断专家评估 — 全表扫描/索引缺失/文件排序/慢查询"
+cases:
+  - id: sql-001
+    description: "全表扫描 — SELECT无合适索引导致全表扫描"
+    problem: "SELECT * FROM orders WHERE status='pending' 没有索引导致执行很慢，怀疑全表扫描"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "全表扫描"
+        - "索引"
+        - "优化"
+      minKeywordMatches: 2
+      recommendations:
+        - "创建索引"
+        - "EXPLAIN分析"
+
+  - id: sql-002
+    description: "文件排序 — ORDER BY字段缺少索引导致filesort"
+    problem: "ORDER BY create_time字段没有索引，filesort导致查询很慢"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "排序"
+        - "filesort"
+        - "索引"
+      minKeywordMatches: 2
+      recommendations:
+        - "复合索引"
+        - "SQL改写"
+
+  - id: sql-003
+    description: "慢查询 — 多表JOIN执行超时"
+    problem: "三表JOIN查询耗时超过5秒，慢查询日志中出现多次，怀疑缺少索引"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "慢查询"
+        - "执行计划"
+        - "索引"
+      minKeywordMatches: 2
+      recommendations:
+        - "EXPLAIN分析"
+        - "索引优化"

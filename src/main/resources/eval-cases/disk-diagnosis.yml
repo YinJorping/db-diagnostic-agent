@@ -1,0 +1,17 @@
+domain: disk
+description: "磁盘诊断专家评估 — 磁盘空间/I/O"
+cases:
+  - id: disk-001
+    description: "磁盘空间不足 — 数据目录使用率超过阈值"
+    problem: "数据库数据目录磁盘使用率达到90%，WAL日志持续增长，存储空间告急"
+    expected:
+      agent: DiskDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "磁盘"
+        - "空间"
+        - "WAL"
+      minKeywordMatches: 2
+      recommendations:
+        - "清理WAL日志"
+        - "扩容存储"
