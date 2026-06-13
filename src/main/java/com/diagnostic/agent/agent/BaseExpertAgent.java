@@ -69,7 +69,9 @@ public abstract class BaseExpertAgent implements Agent {
             List<ToolResult> toolResults = executeTools(tools, ctx.problem());
             String toolResultsText = formatToolResults(toolResults);
             String userPrompt = buildUserPrompt(ctx.problem(), toolResultsText, historyText);
-            String systemPrompt = promptService.loadTemplate(getSystemPromptTemplateKey());
+            String promptKey = getSystemPromptTemplateKey();
+            String systemPrompt = promptService.loadTemplate(promptKey);
+            log.info("Agent [{}] LLM 调用: promptKey={}, sessionId={}", getName(), promptKey, ctx.sessionId());
             String llmResponse = llmClient.chat(systemPrompt, userPrompt);
             RiskLevel risk = aggregateRisk(toolResults);
 

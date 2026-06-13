@@ -1,12 +1,14 @@
 package com.diagnostic.agent.agent;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
  * LLM Mock 实现，关键词匹配返回预设诊断结论。
- * Phase 1 验证 Agent→Tool→LLM 闭环，Phase 2 切换为真实 API。
+ * Phase 1 默认激活，Phase 2 设置 provider=deepseek/openai 切换到真实 API。
  */
 @Component
+@ConditionalOnProperty(name = "diagnostic.llm.provider", havingValue = "mock", matchIfMissing = true)
 public class MockLlmClient implements LlmClient {
 
     @Override

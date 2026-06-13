@@ -51,7 +51,24 @@ info:
 # ---- 诊断平台配置 ----
 diagnostic:
   llm:
-    provider: mock           # Phase 1 默认 mock，Phase 2 切 deepseek/openai
+    provider: mock           # mock | deepseek | openai | moonshot | ...
+    timeout: 30s             # HTTP connect + request timeout
+    temperature: 0.3         # 诊断场景需确定性输出
+    max-tokens: 1024
+    providers:
+      deepseek:
+        api-key: ${DEEPSEEK_API_KEY:}
+        model: deepseek-chat
+        base-url: https://api.deepseek.com/v1
+      openai:
+        api-key: ${OPENAI_API_KEY:}
+        model: gpt-4o
+        base-url: https://api.openai.com/v1
+      # 新增 OpenAI 兼容 provider 只需加一段：
+      # moonshot:
+      #   api-key: ${MOONSHOT_API_KEY:}
+      #   model: moonshot-v1-8k
+      #   base-url: https://api.moonshot.cn/v1
   tool:
     timeout-seconds: 5       # Tool 执行超时
   memory:
