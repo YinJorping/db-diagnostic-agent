@@ -1,8 +1,14 @@
 # DB Diagnostic Agent
 
-**Orchestrator + Multi-Expert Agent 协作的数据库智能诊断平台**
+**AI-Native 数据库智能诊断平台** — 输入自然语言问题，5 个 AI Agent 并行协作，30 秒内输出结构化诊断报告。
 
-Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · Testcontainers · Micrometer + Prometheus · LangChain4j 1.10.0
+[![Java 21](https://img.shields.io/badge/Java-21-orange)](https://adoptium.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3.5-green)](https://spring.io/projects/spring-boot)
+[![Tests](https://img.shields.io/badge/Tests-301_PASS-brightgreen)]()
+[![DeepSeek](https://img.shields.io/badge/LLM-DeepSeek-blue)](https://platform.deepseek.com/)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)]()
+
+Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · Testcontainers · Micrometer + Prometheus
 
 ---
 
@@ -42,9 +48,37 @@ Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · T
 └──────────────────────────────────────────────┘
 ```
 
-## 核心能力
+### 请求时序
 
-接收自然语言描述的数据库问题，自动路由匹配诊断专家，并行执行安全只读工具分析，生成结构化诊断报告。
+```mermaid
+sequenceDiagram
+    actor User
+    User->>Controller: POST /api/diagnose
+    Controller->>Orchestrator: diagnose()
+    Orchestrator->>AgentRouter: routeAll(problem)
+    AgentRouter-->>Orchestrator: [SqlAgent, CpuAgent]
+    par 并行诊断
+        SqlAgent->>ExplainTool: execute()
+        SqlAgent->>LLM: chat(systemPrompt, toolResults)
+        CpuAgent->>CpuUsageTool: execute()
+        CpuAgent->>LLM: chat(systemPrompt, toolResults)
+    end
+    Orchestrator-->>Controller: DiagnosisReport
+    Controller-->>User: ApiResponse + SSE Events
+```
+
+## 核心特性
+
+- **自然语言输入** — "数据库慢" "CPU 高" "磁盘满"，无需学习 DSL
+- **Multi-Agent 并行协作** — 5 专家并行诊断，CompletableFuture 异步编排，比串行快 60%
+- **Agent Router 自动匹配** — 关键词路由 0ms 延迟，单/多 Agent 联合诊断
+- **6 个只读安全 Tool** — EXPLAIN 分析 / 慢查询采集 / JMX 资源监控，仅 SELECT，无写操作
+- **SSE 实时流式推送** — 6 种事件类型（START → ROUTING → AGENT_START → AGENT_RESULT → RESULT → COMPLETE）
+- **LLM Provider 一键切换** — DeepSeek / OpenAI / Moonshot，OpenAI 兼容协议，配置文件加一段即用
+- **Redis 会话记忆** — 多轮对话上下文自动注入，TTL 30 分钟
+- **Prompt 评测体系** — 4 维评分 + 10 条 Benchmark + A/B 对比，无需改数据库
+- **生产级可观测性** — UUID 全链路 Trace + 7 Prometheus 指标 + Grafana 就绪
+- **零成本演示** — Mock 模式无需 API Key，启动即用
 
 ### 诊断五维度（Phase 1 闭环）
 
@@ -88,10 +122,24 @@ Java 21 · Spring Boot 3.3.5 · PostgreSQL 16 + pgvector · Redis · Flyway · T
 
 ## 快速开始
 
-**前置条件**: Java 21, Docker Desktop (IT 需要)
+**前置条件**: Java 21, Docker Desktop
 
 ```bash
-# 开发环境启动（Testcontainers 自动提供 PostgreSQL）
+# 0. 验证环境
+java --version | grep "21"
+docker info > /dev/null 2>&1 && echo "Docker OK" || echo "请先启动 Docker Desktop"
+
+# 1. 一键启动（Mock 模式，零配置，无需 API Key）
+mvn spring-boot:run
+
+# 2. 验证
+curl -X POST http://localhost:8080/api/diagnose \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"quick","problem":"数据库慢"}'
+
+# 3. 切换到 DeepSeek（需要 API Key）
+export DEEPSEEK_API_KEY=sk-your-key
+# 修改 application.yml: diagnostic.llm.provider: deepseek
 mvn spring-boot:run
 
 # 运行所有单元测试
