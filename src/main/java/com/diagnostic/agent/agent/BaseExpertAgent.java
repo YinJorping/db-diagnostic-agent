@@ -81,15 +81,25 @@ public abstract class BaseExpertAgent implements Agent {
             String historyText = promptContextBuilder.buildContext(ctx.sessionId());
 
             List<Tool> tools = selectTools();
+            log.info("[{}] 选中 Tools: {} (跳过: 未匹配)", getName(),
+                    tools.stream().map(Tool::getName).toList());
             List<ToolResult> toolResults = executeTools(tools, ctx.problem(), trace);
+            for (ToolResult tr : toolResults) {
+                log.info("[{}] Tool[{}] success={} summary={}",
+                        getName(), tr.getToolName(), tr.isSuccess(), tr.getSummary());
+            }
             String toolResultsText = formatToolResults(toolResults);
             String userPrompt = buildUserPrompt(ctx.problem(), toolResultsText, historyText);
             String promptKey = getSystemPromptTemplateKey();
             String systemPrompt = promptService.loadTemplate(promptKey);
-            log.info("Agent [{}] LLM 调用: promptKey={}, sessionId={}", getName(), promptKey, ctx.sessionId());
+            log.info("[{}] LLM客户端类型={}", getName(), llmClient.getClass().getSimpleName());
+            log.info("[{}] promptKey={}", getName(), promptKey);
+            log.info("[{}] === SYSTEM PROMPT ===\n{}", getName(), systemPrompt);
+            log.info("[{}] === USER PROMPT ===\n{}", getName(), userPrompt);
 
             long llmStart = System.currentTimeMillis();
             String llmResponse = llmClient.chat(systemPrompt, userPrompt);
+            log.info("[{}] === LLM RESPONSE ===\n{}", getName(), llmResponse);
             long llmLatency = System.currentTimeMillis() - llmStart;
             LlmClient.LlmUsage usage = llmClient.lastUsage();
             trace.addLlmCall(new ExecutionTrace.LlmCallRecord(

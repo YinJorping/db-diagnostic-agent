@@ -78,6 +78,20 @@ class AgentRouterTest {
     }
 
     @Test
+    void shouldRouteQuerySlowToSqlAgent() {
+        Agent agent = router.route("why is my query slow");
+        assertThat(agent).isNotNull();
+        assertThat(agent.getName()).isEqualTo("SqlDiagnosisAgent");
+    }
+
+    @Test
+    void shouldRouteQuerySlowInRouteAll() {
+        List<Agent> agents = router.routeAll("why is my query slow");
+        assertThat(agents).hasSize(1);
+        assertThat(agents.get(0).getName()).isEqualTo("SqlDiagnosisAgent");
+    }
+
+    @Test
     void shouldReturnNullForNonSqlProblem() {
         assertThat(router.route("今天天气怎么样")).isNull();
     }

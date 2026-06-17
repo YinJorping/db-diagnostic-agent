@@ -20,7 +20,7 @@ public class SqlDiagnosisAgent extends BaseExpertAgent {
 
     // Router 路由关键词：业务主题词（中英文、数据库名等）
     private static final List<String> ROUTING_KEYWORDS = List.of(
-            "sql", "数据库", "查询", "索引", "执行计划", "慢查询",
+            "sql", "query", "slow", "数据库", "查询", "索引", "执行计划", "慢查询",
             "postgres", "postgresql", "mysql",
             "select", "insert", "update", "delete"
     );
