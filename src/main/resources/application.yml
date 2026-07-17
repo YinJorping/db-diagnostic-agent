@@ -51,10 +51,10 @@ info:
 # ---- 诊断平台配置 ----
 diagnostic:
   llm:
-    provider: mock           # mock | deepseek | openai | moonshot | ...
+    provider: mock               # mock | deepseek | openai | moonshot | ...
     timeout: 30s             # HTTP connect + request timeout
     temperature: 0.3         # 诊断场景需确定性输出
-    max-tokens: 1024
+    max-tokens: 2048
     providers:
       deepseek:
         api-key: ${DEEPSEEK_API_KEY:}

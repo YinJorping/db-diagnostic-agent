@@ -30,3 +30,37 @@ cases:
       recommendations:
         - "调整work_mem"
         - "SQL优化"
+
+  # === Phase 3 新增 ===
+
+  - id: memory-003
+    description: "缓存命中率严重过低 — 真实Phase 3场景：shared_buffers=128MB导致大量磁盘读取"
+    problem: "数据库缓存命中率只有60%，物理机有16GB内存但shared_buffers只有128MB，大量查询无法命中缓存"
+    expected:
+      agent: MemoryDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "缓存命中率"
+        - "shared_buffers"
+        - "增加"
+        - "内存"
+      minKeywordMatches: 2
+      recommendations:
+        - "增大shared_buffers"
+        - "内存配置调整"
+        - "缓存优化"
+
+  - id: memory-004
+    description: "内存正常 — 缓存命中率健康，无需调整"
+    problem: "数据库缓存命中率保持在99%以上，临时文件数量很少，内存配置看起来没问题"
+    expected:
+      agent: MemoryDiagnosisAgent
+      risk: LOW
+      keywords:
+        - "正常"
+        - "命中率"
+        - "缓存"
+      minKeywordMatches: 1
+      recommendations:
+        - "持续监控"
+        - "保持当前配置"

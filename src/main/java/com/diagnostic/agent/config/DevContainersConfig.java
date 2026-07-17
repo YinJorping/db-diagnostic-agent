@@ -2,6 +2,7 @@ package com.diagnostic.agent.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -12,6 +13,7 @@ import javax.sql.DataSource;
 
 @Configuration(proxyBeanMethods = false)
 @Profile("dev")
+@ConditionalOnProperty(name = "diagnostic.datasource.testcontainers", havingValue = "true", matchIfMissing = true)
 public class DevContainersConfig {
 
     @Bean(destroyMethod = "stop")

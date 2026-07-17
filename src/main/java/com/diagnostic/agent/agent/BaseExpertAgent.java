@@ -1,5 +1,6 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.RiskLevel;
 import com.diagnostic.agent.tool.Tool;
@@ -33,19 +34,22 @@ public abstract class BaseExpertAgent implements Agent {
     protected final PromptContextBuilder promptContextBuilder;
     protected final ExecutionTraceRepository traceRepository;
     protected final DiagnosticMetrics metrics;
+    protected final SensitiveDataMasker sensitiveDataMasker;
 
     protected BaseExpertAgent(ToolRegistry toolRegistry,
                               PromptService promptService,
                               LlmClient llmClient,
                               PromptContextBuilder promptContextBuilder,
                               ExecutionTraceRepository traceRepository,
-                              DiagnosticMetrics metrics) {
+                              DiagnosticMetrics metrics,
+                              SensitiveDataMasker sensitiveDataMasker) {
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
         this.llmClient = llmClient;
         this.promptContextBuilder = promptContextBuilder;
         this.traceRepository = traceRepository;
         this.metrics = metrics;
+        this.sensitiveDataMasker = sensitiveDataMasker;
     }
 
     // ---- 子类必须实现 ----
@@ -89,6 +93,7 @@ public abstract class BaseExpertAgent implements Agent {
                         getName(), tr.getToolName(), tr.isSuccess(), tr.getSummary());
             }
             String toolResultsText = formatToolResults(toolResults);
+            toolResultsText = sensitiveDataMasker.mask(toolResultsText);
             String userPrompt = buildUserPrompt(ctx.problem(), toolResultsText, historyText);
             String promptKey = getSystemPromptTemplateKey();
             String systemPrompt = promptService.loadTemplate(promptKey);
@@ -116,7 +121,9 @@ public abstract class BaseExpertAgent implements Agent {
             metrics.incrementDiagnosis(getName(), "success");
             agentSample.stop(metrics.agentLatency(getName()));
 
-            return DiagnosisResult.success(getName(), llmResponse, llmResponse, risk, elapsed);
+            return DiagnosisResult.success(getName(), llmResponse, llmResponse, risk, elapsed,
+                    usage != null ? usage.promptTokens() : 0,
+                    usage != null ? usage.completionTokens() : 0);
         } catch (Exception e) {
             log.error("Agent [{}] 诊断失败: sessionId={}, {}", getName(), ctx.sessionId(), e.getMessage(), e);
             long elapsed = System.currentTimeMillis() - start;
@@ -193,7 +200,7 @@ public abstract class BaseExpertAgent implements Agent {
                 sb.append("摘要: ").append(r.getSummary()).append("\n");
                 sb.append("详情: ").append(r.getDetail()).append("\n");
             } else {
-                sb.append("状态: 失败\n");
+                sb.append("状态: 失败（仍可基于经验分析）\n");
                 sb.append("错误: ").append(r.getError()).append("\n");
             }
             sb.append("\n");
@@ -206,7 +213,8 @@ public abstract class BaseExpertAgent implements Agent {
         return historyText
                 + "用户问题: " + problem + "\n\n"
                 + toolResultsText + "\n"
-                + "请基于以上诊断工具的输出结果，给出诊断结论和优化建议。";
+                + "工具执行结果如上。优先用专业知识回答用户问题；"
+                + "工具成功时基于数据给出具体建议，工具失败时列出常见原因并说明证据不足。";
     }
 
     // ---- Risk 聚合 ----

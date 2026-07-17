@@ -24,6 +24,12 @@ public class MockLlmClient implements LlmClient {
     public String chat(String systemPrompt, String userPrompt) {
         Timer.Sample sample = metrics != null ? metrics.startTimer() : null;
         try {
+            // 优先使用 Tool 已生成的诊断结论
+            String toolBased = buildToolBasedResponse(userPrompt);
+            if (toolBased != null) {
+                lastUsage = new LlmUsage(100, 50);
+                return toolBased;
+            }
             String domain = detectDomain(systemPrompt);
             String response = switch (domain) {
                 case "CPU"    -> cpuResponse(userPrompt);
@@ -44,6 +50,100 @@ public class MockLlmClient implements LlmClient {
                 }
             }
         }
+    }
+
+    // ================================================================
+    // Tool / Agent 诊断结论提取
+    //
+    // 背景：真实 LLM 会读取 userPrompt 中的 Tool 输出或 Agent 报告，
+    // 在已有结论基础上生成自然语言摘要。Mock 模拟这一行为——不重新分析
+    // 数据，只读取已生成的结论（Tool Summary / Agent Result Summary）。
+    //
+    // 依赖的格式标记全部来自代码中的固定字符串，不依赖自然语言 Prompt 内容：
+    //   - "摘要: "            → BaseExpertAgent.formatToolResults() 固定前缀
+    //   - "【" / "】"         → OrchestratorAgent.buildAgentReportsText() 固定格式
+    //   - "风险等级: "        → DiagnosisResult.getRisk().name() 拼接
+    //   - MEDIUM / HIGH       → RiskLevel 枚举值（Java enum）
+    //
+    // 注：这是 Mock 模式下模拟 LLM 聚合行为的兼容逻辑，
+    //     不影响 OpenAiCompatibleLlmClient（完全独立的实现）。
+    //     如果未来出现第三种 Prompt 格式，应重新评估设计而非继续追加分支。
+    // ================================================================
+
+    /**
+     * 尝试从 userPrompt 中提取已有的诊断结论。
+     * 按顺序尝试两种格式，命中其一即返回；均未命中返回 null，走关键词匹配。
+     */
+    private String buildToolBasedResponse(String userPrompt) {
+        if (userPrompt == null) return null;
+        String result = extractToolSummary(userPrompt);
+        if (result != null) return result;
+        return extractAgentReports(userPrompt);
+    }
+
+    /**
+     * 格式1 — ExpertAgent 路径。
+     * formatToolResults() 生成: "摘要: {Tool.buildSummary()}"
+     * Tool.buildSummary() 输出包含风险等级（如 "检测到 2 个内存问题，风险等级 MEDIUM"）。
+     */
+    private String extractToolSummary(String userPrompt) {
+        int idx = userPrompt.indexOf("摘要: ");
+        if (idx < 0) return null;
+        int end = userPrompt.indexOf("\n", idx);
+        String summary = end > 0
+                ? userPrompt.substring(idx + "摘要: ".length(), end).trim()
+                : userPrompt.substring(idx + "摘要: ".length()).trim();
+        if (summary.contains("风险等级 MEDIUM") || summary.contains("风险等级 HIGH")) {
+            return summary;
+        }
+        return null;
+    }
+
+    /**
+     * 格式2 — Orchestrator Summarizer 路径。
+     * buildAgentReportsText() 生成:
+     *   【{agentName}】风险等级: {RISK}
+     *   {summary}
+     *
+     * 提取其中 MEDIUM / HIGH 的 Agent 摘要并拼接。
+     */
+    private String extractAgentReports(String userPrompt) {
+        if (!userPrompt.contains("风险等级: MEDIUM") && !userPrompt.contains("风险等级: HIGH")) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        int pos = 0;
+        String riskPrefix = "风险等级: ";
+        while ((pos = userPrompt.indexOf("【", pos)) >= 0) {
+            int nameEnd = userPrompt.indexOf("】", pos);
+            if (nameEnd < 0) break;
+            String agentName = userPrompt.substring(pos + 1, nameEnd);
+            int riskIdx = userPrompt.indexOf(riskPrefix, nameEnd);
+            if (riskIdx < 0) break;
+            int riskEnd = userPrompt.indexOf("\n", riskIdx);
+            String risk = riskEnd > 0
+                    ? userPrompt.substring(riskIdx + riskPrefix.length(), riskEnd).trim()
+                    : userPrompt.substring(riskIdx + riskPrefix.length()).trim();
+            if ("MEDIUM".equals(risk) || "HIGH".equals(risk)) {
+                int summaryStart = riskEnd > 0 ? riskEnd + 1 : riskIdx + riskPrefix.length() + risk.length();
+                int summaryEnd = findSummaryEnd(userPrompt, summaryStart);
+                String agentSummary = userPrompt.substring(summaryStart, summaryEnd).trim();
+                if (!agentSummary.isEmpty()) {
+                    if (sb.length() > 0) sb.append("\n\n");
+                    sb.append("【").append(agentName).append("】").append(agentSummary);
+                }
+            }
+            pos = nameEnd + 1;
+        }
+        return sb.length() > 0 ? sb.toString().trim() : null;
+    }
+
+    private static int findSummaryEnd(String userPrompt, int from) {
+        int end = userPrompt.indexOf("\n\n", from);
+        if (end >= 0) return end;
+        end = userPrompt.indexOf("【", from);
+        if (end >= 0) return end;
+        return userPrompt.length();
     }
 
     @Override

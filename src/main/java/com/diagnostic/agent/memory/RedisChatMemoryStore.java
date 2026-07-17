@@ -21,7 +21,7 @@ public class RedisChatMemoryStore implements ChatMemoryStore {
 
     private static final Logger log = LoggerFactory.getLogger(RedisChatMemoryStore.class);
     private static final String KEY_PREFIX = "chat:memory:";
-    private static final Duration TTL = Duration.ofDays(30);
+    private static final Duration TTL = Duration.ofMinutes(30);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;

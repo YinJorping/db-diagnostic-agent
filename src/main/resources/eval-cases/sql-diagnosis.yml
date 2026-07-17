@@ -45,3 +45,71 @@ cases:
       recommendations:
         - "EXPLAIN分析"
         - "索引优化"
+
+  - id: sql-004
+    description: "Tool失败场景 — pg_stat_statements不可用时优先回答用户问题而非分析Tool错误"
+    problem: "SQL执行很慢，可能是什么原因？"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "索引"
+        - "全表扫描"
+        - "慢查询"
+        - "EXPLAIN"
+        - "统计信息"
+      minKeywordMatches: 3
+      recommendations:
+        - "启用pg_stat_statements"
+        - "EXPLAIN ANALYZE"
+
+  # === Phase 3: 基于真实诊断场景的新增用例 ===
+
+  - id: sql-005
+    description: "50万行大表全表扫描 — 缺索引导致Seq Scan扫描大量行"
+    problem: "orders_large表有50万行数据，status列没有索引，SELECT * WHERE status='pending' 每次都要扫描全表，执行计划显示Seq Scan扫描大量行"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "全表扫描"
+        - "Seq Scan"
+        - "索引"
+        - "EXPLAIN"
+      minKeywordMatches: 2
+      recommendations:
+        - "创建索引"
+        - "覆盖索引"
+        - "EXPLAIN分析"
+
+  - id: sql-006
+    description: "正常查询 — 有主键索引的查询不存在性能问题"
+    problem: "SELECT * FROM orders_indexed WHERE id = 123 这个查询从执行计划看走的是Index Scan，性能如何？"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: LOW
+      keywords:
+        - "索引"
+        - "Index Scan"
+        - "正常"
+      minKeywordMatches: 1
+      recommendations:
+        - "查询正常"
+        - "索引已覆盖"
+
+  - id: sql-007
+    description: "模糊描述 — 仅有'数据库慢'无具体信息，应引导排查"
+    problem: "数据库最近变慢了，帮我看看是什么原因"
+    expected:
+      agent: SqlDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "慢查询"
+        - "分析"
+        - "EXPLAIN"
+        - "监控"
+      minKeywordMatches: 2
+      recommendations:
+        - "慢查询日志"
+        - "EXPLAIN分析"
+        - "性能监控"

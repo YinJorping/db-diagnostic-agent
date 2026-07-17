@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.tool.MemoryProperties;
 import com.diagnostic.agent.tool.ToolResult;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +33,7 @@ class MemoryDiagnosisAgentTest {
     @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
     private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
             new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private com.diagnostic.agent.tool.MemoryUsageTool memoryUsageTool;
     private MemoryDiagnosisAgent agent;
@@ -39,7 +42,7 @@ class MemoryDiagnosisAgentTest {
     void setup() {
         memoryUsageTool = spy(new com.diagnostic.agent.tool.MemoryUsageTool(dataSource, new MemoryProperties()));
         agent = new MemoryDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
     }
 
     @Test

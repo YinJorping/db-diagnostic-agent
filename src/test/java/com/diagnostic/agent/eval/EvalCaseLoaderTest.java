@@ -22,15 +22,15 @@ class EvalCaseLoaderTest {
     @Test
     void shouldFilterByDomain() {
         List<EvalCase> sqlCases = loader.loadByDomain("sql");
-        assertThat(sqlCases).hasSize(3);
+        assertThat(sqlCases).hasSize(7);
         assertThat(sqlCases).extracting(EvalCase::id)
-                .containsExactly("sql-001", "sql-002", "sql-003");
+                .containsExactly("sql-001", "sql-002", "sql-003", "sql-004", "sql-005", "sql-006", "sql-007");
     }
 
     @Test
     void shouldLoadAllWithWildcard() {
         List<EvalCase> all = loader.loadByDomain("*");
-        assertThat(all).hasSize(10);
+        assertThat(all).hasSize(22);
     }
 
     @Test

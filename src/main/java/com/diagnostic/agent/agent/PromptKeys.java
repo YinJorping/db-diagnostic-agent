@@ -13,6 +13,7 @@ public final class PromptKeys {
     public static final String MEMORY_DIAGNOSIS_SYSTEM = "memory_diagnosis_system";
     public static final String JVM_DIAGNOSIS_SYSTEM = "jvm_diagnosis_system";
     public static final String DISK_DIAGNOSIS_SYSTEM = "disk_diagnosis_system";
+    public static final String SUMMARIZER_AGGREGATION = "summarizer_aggregation";
 
     private PromptKeys() {}
 }

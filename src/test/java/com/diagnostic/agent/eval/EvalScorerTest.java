@@ -22,7 +22,7 @@ class EvalScorerTest {
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
                 "检测到全表扫描，建议对问题字段创建索引，使用EXPLAIN分析",
-                "detail", RiskLevel.HIGH, 1000L);
+                "detail", RiskLevel.HIGH, 1000L, 100, 50);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 2000L);
 
@@ -40,7 +40,7 @@ class EvalScorerTest {
                         List.of("CPU"), 1, List.of()));
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
-                "summary", "detail", RiskLevel.LOW, 500L);
+                "summary", "detail", RiskLevel.LOW, 500L, 80, 40);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 1000L);
 
@@ -57,7 +57,7 @@ class EvalScorerTest {
                         List.of()));
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
-                "检测到全表扫描和索引问题", "detail", RiskLevel.MEDIUM, 500L);
+                "检测到全表扫描和索引问题", "detail", RiskLevel.MEDIUM, 500L, 100, 50);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 1000L);
 
@@ -73,7 +73,7 @@ class EvalScorerTest {
                         List.of("创建索引", "增加缓存", "SQL改写")));
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
-                "建议创建索引，进行SQL改写", "detail", RiskLevel.LOW, 500L);
+                "建议创建索引，进行SQL改写", "detail", RiskLevel.LOW, 500L, 90, 45);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 1000L);
         assertThat(er.recommendationCoverage()).isEqualTo(2.0 / 3.0);
@@ -87,7 +87,7 @@ class EvalScorerTest {
                         List.of("CPU", "Load"), 1, List.of()));
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
-                "cpu load is high", "detail", RiskLevel.LOW, 500L);
+                "cpu load is high", "detail", RiskLevel.LOW, 500L, 70, 30);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 1000L);
         assertThat(er.keywordCoverage()).isEqualTo(1.0);
@@ -101,7 +101,7 @@ class EvalScorerTest {
                         List.of(), 0, List.of()));
 
         DiagnosisResult result = DiagnosisResult.success("SqlDiagnosisAgent",
-                "some response", "detail", RiskLevel.LOW, 500L);
+                "some response", "detail", RiskLevel.LOW, 500L, 60, 30);
 
         EvalResult er = scorer.evaluate(evalCase, result, 100, 50, 1000L);
         assertThat(er.keywordCoverage()).isEqualTo(1.0);

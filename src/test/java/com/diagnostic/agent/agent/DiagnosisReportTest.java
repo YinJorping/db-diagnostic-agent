@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DiagnosisReportTest {
 
     private static DiagnosisResult successResult(String name, RiskLevel risk) {
-        return DiagnosisResult.success(name, name + "检查正常", "detail", risk, 100);
+        return DiagnosisResult.success(name, name + "检查正常", "detail", risk, 100, 50, 30);
     }
 
     private static DiagnosisResult failedResult(String name) {

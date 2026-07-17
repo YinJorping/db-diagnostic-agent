@@ -37,7 +37,7 @@ class DiagnosisControllerTest {
     void shouldReturnDiagnosisResponseOnValidRequest() throws Exception {
         DiagnosisResult r = DiagnosisResult.success(
                 "SqlDiagnosisAgent", "检测到全表扫描", "建议加索引",
-                RiskLevel.HIGH, 150L);
+                RiskLevel.HIGH, 150L, 200, 100);
         DiagnosisReport mockReport = DiagnosisReport.fromSingle("sess-001", r);
 
         when(orchestrator.diagnose("sess-001", "数据库查询很慢")).thenReturn(mockReport);

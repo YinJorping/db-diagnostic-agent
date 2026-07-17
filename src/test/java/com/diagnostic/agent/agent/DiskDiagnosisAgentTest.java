@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.tool.DiskMetricsProvider;
 import com.diagnostic.agent.tool.DiskProperties;
 import com.diagnostic.agent.tool.DiskUsageTool;
@@ -42,6 +44,7 @@ class DiskDiagnosisAgentTest {
     @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
     private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
             new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private DiskUsageTool diskUsageTool;
     private DiskDiagnosisAgent agent;
@@ -55,7 +58,7 @@ class DiskDiagnosisAgentTest {
         when(stmt.executeQuery()).thenReturn(rs);
         diskUsageTool = spy(new DiskUsageTool(diskMetricsProvider, new DiskProperties(), dataSource));
         agent = new DiskDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
     }
 
     @Test

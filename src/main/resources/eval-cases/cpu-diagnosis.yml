@@ -29,3 +29,36 @@ cases:
       recommendations:
         - "进程排查"
         - "资源限制"
+
+  # === Phase 3 新增 ===
+
+  - id: cpu-003
+    description: "CPU正常 — 使用率在健康范围内"
+    problem: "数据库服务器CPU使用率在30%左右，Load Average正常，没有任何性能告警"
+    expected:
+      agent: CpuDiagnosisAgent
+      risk: LOW
+      keywords:
+        - "正常"
+        - "CPU"
+        - "健康"
+      minKeywordMatches: 1
+      recommendations:
+        - "持续监控"
+        - "保持现状"
+
+  - id: cpu-004
+    description: "IO等待导致CPU — 磁盘IO瓶颈拖累CPU响应"
+    problem: "CPU iowait达到40%，系统Load Average升高，但用户态CPU使用率不高，怀疑磁盘IO成为瓶颈"
+    expected:
+      agent: CpuDiagnosisAgent
+      risk: MEDIUM
+      keywords:
+        - "iowait"
+        - "磁盘"
+        - "CPU"
+        - "IO"
+      minKeywordMatches: 2
+      recommendations:
+        - "磁盘IO排查"
+        - "慢查询优化"

@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.memory.MessageType;
 import com.diagnostic.agent.memory.StoredMessage;
@@ -35,6 +37,7 @@ class BaseExpertAgentTest {
     @Mock private PromptContextBuilder promptContextBuilder;
     @Mock private ExecutionTraceRepository traceRepository;
     private final DiagnosticMetrics metrics = new DiagnosticMetrics(new SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private TestAgent agent;
     private ExecutionTrace trace;
@@ -42,7 +45,7 @@ class BaseExpertAgentTest {
     @BeforeEach
     void setup() {
         agent = new TestAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
         trace = new ExecutionTrace("test-trace", "TestAgent", "test-session", 0);
     }
 
@@ -251,8 +254,9 @@ class BaseExpertAgentTest {
         private Map<String, Object> toolParams;
 
         TestAgent(ToolRegistry registry, PromptService prompts, LlmClient llm,
-                  PromptContextBuilder pcb, ExecutionTraceRepository traceRepo, DiagnosticMetrics m) {
-            super(registry, prompts, llm, pcb, traceRepo, m);
+                  PromptContextBuilder pcb, ExecutionTraceRepository traceRepo, DiagnosticMetrics m,
+                  SensitiveDataMasker masker) {
+            super(registry, prompts, llm, pcb, traceRepo, m, masker);
         }
 
         void setAssignedTools(List<String> names) { this.assignedTools = names; }

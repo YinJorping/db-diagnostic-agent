@@ -15,3 +15,37 @@ cases:
       recommendations:
         - "清理WAL日志"
         - "扩容存储"
+
+  # === Phase 3 新增 ===
+
+  - id: disk-002
+    description: "磁盘正常 — 空间和IO均在健康范围"
+    problem: "数据库数据目录磁盘使用率40%，IO等待时间正常，没有存储瓶颈"
+    expected:
+      agent: DiskDiagnosisAgent
+      risk: LOW
+      keywords:
+        - "正常"
+        - "磁盘"
+        - "健康"
+      minKeywordMatches: 1
+      recommendations:
+        - "持续监控"
+        - "保持现状"
+
+  - id: disk-003
+    description: "磁盘IO延迟高 — 存储性能瓶颈导致查询变慢"
+    problem: "磁盘平均IO等待时间超过50ms，iostat显示await指标异常，数据库写入操作频繁卡顿"
+    expected:
+      agent: DiskDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "IO"
+        - "延迟"
+        - "磁盘"
+        - "存储"
+      minKeywordMatches: 2
+      recommendations:
+        - "IO性能分析"
+        - "存储升级"
+        - "WAL优化"

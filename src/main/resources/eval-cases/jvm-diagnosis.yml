@@ -30,3 +30,39 @@ cases:
       recommendations:
         - "JVM参数调优"
         - "对象分配分析"
+
+  # === Phase 3 新增 ===
+
+  - id: jvm-003
+    description: "线程数过高 — 线程泄漏或连接池过大导致线程膨胀"
+    problem: "应用线程数已超过800个，远高于正常水平，线程上下文切换频繁，CPU sys使用率升高"
+    expected:
+      agent: JvmDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "线程"
+        - "线程数"
+        - "连接池"
+        - "上下文切换"
+      minKeywordMatches: 2
+      recommendations:
+        - "线程分析"
+        - "连接池调优"
+        - "线程泄漏排查"
+
+  - id: jvm-004
+    description: "Non-heap内存高 — 元空间或直接内存占用异常"
+    problem: "JVM non-heap内存使用率达到92%，元空间持续增长，可能触发OOM"
+    expected:
+      agent: JvmDiagnosisAgent
+      risk: HIGH
+      keywords:
+        - "Non-heap"
+        - "元空间"
+        - "Metaspace"
+        - "内存"
+      minKeywordMatches: 2
+      recommendations:
+        - "元空间调优"
+        - "类加载分析"
+        - "直接内存检查"

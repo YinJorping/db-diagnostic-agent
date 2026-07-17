@@ -1,5 +1,6 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.memory.ChatMemoryStore;
 import com.diagnostic.agent.memory.MessageType;
 import com.diagnostic.agent.memory.StoredMessage;
@@ -8,12 +9,17 @@ import com.diagnostic.agent.repository.DiagnosisRecordRepository;
 import com.diagnostic.agent.repository.Session;
 import com.diagnostic.agent.repository.SessionRepository;
 import com.diagnostic.agent.tool.RiskLevel;
+import com.diagnostic.agent.tool.Tool;
+import com.diagnostic.agent.tool.ToolRegistry;
+import com.diagnostic.agent.tool.ToolResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -31,7 +37,9 @@ public class OrchestratorAgent {
     private final LlmClient llmClient;
     private final ChatMemoryStore memoryStore;
     private final PromptContextBuilder promptContextBuilder;
+    private final ToolRegistry toolRegistry;
     private final Executor agentExecutor;
+    private final SensitiveDataMasker sensitiveDataMasker;
 
     public OrchestratorAgent(SessionRepository sessionRepository,
                              DiagnosisRecordRepository recordRepository,
@@ -40,7 +48,9 @@ public class OrchestratorAgent {
                              LlmClient llmClient,
                              ChatMemoryStore memoryStore,
                              PromptContextBuilder promptContextBuilder,
-                             @Qualifier("agentExecutor") Executor agentExecutor) {
+                             ToolRegistry toolRegistry,
+                             @Qualifier("agentExecutor") Executor agentExecutor,
+                             SensitiveDataMasker sensitiveDataMasker) {
         this.sessionRepository = sessionRepository;
         this.recordRepository = recordRepository;
         this.agentRouter = agentRouter;
@@ -48,7 +58,9 @@ public class OrchestratorAgent {
         this.llmClient = llmClient;
         this.memoryStore = memoryStore;
         this.promptContextBuilder = promptContextBuilder;
+        this.toolRegistry = toolRegistry;
         this.agentExecutor = agentExecutor;
+        this.sensitiveDataMasker = sensitiveDataMasker;
     }
 
     public DiagnosisReport diagnose(String sessionId, String problem) {
@@ -86,6 +98,10 @@ public class OrchestratorAgent {
             return DiagnosisReport.fromSingle(sessionId, fallback);
         }
         DiagnosisContext ctx = new DiagnosisContext(sessionId, problem);
+
+        // V1 Scope C5 + Section 2 跨域能力: 锁阻塞检测 + 连接状态快照
+        List<DiagnosisResult> sharedResults = executeSharedTools(sessionId, problem, listener);
+
         List<CompletableFuture<DiagnosisResult>> futures = agents.stream()
                 .map(agent -> CompletableFuture
                         .supplyAsync(() -> {
@@ -104,10 +120,83 @@ public class OrchestratorAgent {
                         }))
                 .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        List<DiagnosisResult> results = futures.stream()
-                .map(CompletableFuture::join)
-                .toList();
-        return DiagnosisReport.aggregate(sessionId, results);
+        List<DiagnosisResult> results = new ArrayList<>(sharedResults);
+        futures.stream().map(CompletableFuture::join).forEach(results::add);
+
+        SummarizationResult summarization = results.size() > 1
+                ? summarizeResults(ctx.problem(), results)
+                : new SummarizationResult(results.get(0).getSummary(), 0, 0);
+        return DiagnosisReport.aggregate(sessionId, results, summarization.summary(),
+                summarization.promptTokens(), summarization.completionTokens());
+    }
+
+    /**
+     * 执行共享诊断工具（锁阻塞检测 + 连接状态快照）。
+     * V1 Scope Section 2 跨域能力 — 每次诊断自动前置采集。
+     */
+    private List<DiagnosisResult> executeSharedTools(String sessionId, String problem,
+                                                     AgentProgressListener listener) {
+        List<DiagnosisResult> results = new ArrayList<>();
+        toolRegistry.get("LockTool").ifPresent(tool -> {
+            try {
+                ToolResult tr = tool.execute(Map.of());
+                DiagnosisResult dr = toDiagnosisResult(tr);
+                listener.onAgentStart(sessionId, tool.getName());
+                listener.onAgentResult(sessionId, dr);
+                results.add(dr);
+            } catch (Exception e) {
+                log.warn("共享 Tool [{}] 执行失败: {}", tool.getName(), e.getMessage());
+            }
+        });
+        return results;
+    }
+
+    private static DiagnosisResult toDiagnosisResult(ToolResult tr) {
+        if (tr.isSuccess()) {
+            return DiagnosisResult.success(tr.getToolName(), tr.getSummary(),
+                    tr.getDetail() != null ? tr.getDetail().toString() : "",
+                    tr.getRisk(), tr.getExecutionTimeMs(), 0, 0);
+        }
+        return DiagnosisResult.failure(tr.getToolName(), tr.getError());
+    }
+
+    /**
+     * 调用 LLM 对多个 Agent 的诊断结果进行语义聚合，生成统一摘要。
+     */
+    private SummarizationResult summarizeResults(String problem, List<DiagnosisResult> results) {
+        try {
+            String systemPrompt = promptService.loadTemplate(PromptKeys.SUMMARIZER_AGGREGATION);
+            String agentReports = buildAgentReportsText(results);
+            String userPrompt = "用户问题: " + problem + "\n\n" + agentReports;
+            userPrompt = sensitiveDataMasker.mask(userPrompt);
+            String summary = llmClient.chat(systemPrompt, userPrompt);
+            LlmClient.LlmUsage usage = llmClient.lastUsage();
+            return new SummarizationResult(summary,
+                    usage != null ? usage.promptTokens() : 0,
+                    usage != null ? usage.completionTokens() : 0);
+        } catch (Exception e) {
+            log.warn("LLM 聚合摘要失败，降级为简单拼接: {}", e.getMessage());
+            return new SummarizationResult(DiagnosisReport.aggregate("_", results).finalSummary(), 0, 0);
+        }
+    }
+
+    private record SummarizationResult(String summary, int promptTokens, int completionTokens) {}
+
+    private String buildAgentReportsText(List<DiagnosisResult> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("以下是各诊断专家的分析结果：\n\n");
+        for (int i = 0; i < results.size(); i++) {
+            DiagnosisResult r = results.get(i);
+            sb.append("【").append(r.getAgentName()).append("】");
+            if (r.isSuccess()) {
+                sb.append("风险等级: ").append(r.getRisk()).append("\n");
+                sb.append(r.getSummary()).append("\n");
+            } else {
+                sb.append("诊断失败: ").append(r.getError()).append("\n");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     private static void safeListenerResult(AgentProgressListener listener, String sessionId,
@@ -124,9 +213,13 @@ public class OrchestratorAgent {
         String systemPrompt = loadFallbackPrompt();
         String historyText = promptContextBuilder.buildContext(ctx.sessionId());
         String userPrompt = historyText + "用户问题: " + ctx.problem();
+        userPrompt = sensitiveDataMasker.mask(userPrompt);
         String response = llmClient.chat(systemPrompt, userPrompt);
         long elapsed = System.currentTimeMillis() - start;
-        return DiagnosisResult.success(GENERAL_AGENT, response, response, RiskLevel.LOW, elapsed);
+        LlmClient.LlmUsage usage = llmClient.lastUsage();
+        return DiagnosisResult.success(GENERAL_AGENT, response, response, RiskLevel.LOW, elapsed,
+                usage != null ? usage.promptTokens() : 0,
+                usage != null ? usage.completionTokens() : 0);
     }
 
     private String loadFallbackPrompt() {

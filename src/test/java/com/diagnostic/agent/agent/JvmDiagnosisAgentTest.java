@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.tool.JvmMetricsProvider;
 import com.diagnostic.agent.tool.JvmProperties;
 import com.diagnostic.agent.tool.JvmUsageTool;
@@ -32,6 +34,7 @@ class JvmDiagnosisAgentTest {
     @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
     private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
             new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private JvmUsageTool jvmUsageTool;
     private JvmDiagnosisAgent agent;
@@ -40,7 +43,7 @@ class JvmDiagnosisAgentTest {
     void setup() {
         jvmUsageTool = spy(new JvmUsageTool(jvmMetricsProvider, new JvmProperties()));
         agent = new JvmDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
     }
 
     @Test

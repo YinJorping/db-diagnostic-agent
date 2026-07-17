@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.tool.CpuMetricsProvider;
 import com.diagnostic.agent.tool.RiskLevel;
 import com.diagnostic.agent.tool.ToolResult;
@@ -31,6 +33,7 @@ class CpuDiagnosisAgentTest {
     @Mock private com.diagnostic.agent.trace.ExecutionTraceRepository traceRepository;
     private final com.diagnostic.agent.config.DiagnosticMetrics metrics =
             new com.diagnostic.agent.config.DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private com.diagnostic.agent.tool.CpuUsageTool cpuUsageTool;
     private CpuDiagnosisAgent agent;
@@ -40,7 +43,7 @@ class CpuDiagnosisAgentTest {
         cpuUsageTool = spy(new com.diagnostic.agent.tool.CpuUsageTool(cpuMetricsProvider,
                 new com.diagnostic.agent.tool.CpuProperties()));
         agent = new CpuDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
     }
 
     @Test

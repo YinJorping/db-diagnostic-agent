@@ -1,0 +1,10 @@
+**/node_modules
+**/.git
+**/.idea
+**/dos
+**/*.md
+.gitignore
+.env
+docker-compose.yml
+src/
+pom.xml

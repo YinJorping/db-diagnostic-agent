@@ -1,5 +1,7 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.DefaultSensitiveDataMasker;
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.ToolRegistry;
 import com.diagnostic.agent.trace.ExecutionTraceRepository;
@@ -23,6 +25,7 @@ class AgentRouterTest {
     @Mock private ExecutionTraceRepository traceRepository;
     private final DiagnosticMetrics metrics =
             new DiagnosticMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    private final SensitiveDataMasker masker = new DefaultSensitiveDataMasker();
 
     private AgentRouter router;
     private SqlDiagnosisAgent sqlAgent;
@@ -34,7 +37,7 @@ class AgentRouterTest {
     @BeforeEach
     void setup() {
         sqlAgent = new SqlDiagnosisAgent(toolRegistry, promptService, llmClient, promptContextBuilder,
-                traceRepository, metrics);
+                traceRepository, metrics, masker);
         cpuAgent = new TestKeywordAgent("CpuAgent", List.of("cpu", "负载", "load", "CPU飙高", "CPU 100%"));
         memoryAgent = new TestKeywordAgent("MemoryAgent",
                 List.of("内存", "memory", "缓存", "buffer", "shared_buffers", "work_mem", "命中率", "内存不足"));

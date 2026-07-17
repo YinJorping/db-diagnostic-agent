@@ -1,5 +1,6 @@
 package com.diagnostic.agent.agent;
 
+import com.diagnostic.agent.common.security.SensitiveDataMasker;
 import com.diagnostic.agent.config.DiagnosticMetrics;
 import com.diagnostic.agent.tool.Tool;
 import com.diagnostic.agent.tool.ToolRegistry;
@@ -24,8 +25,9 @@ public class CpuDiagnosisAgent extends BaseExpertAgent {
                              LlmClient llmClient,
                              PromptContextBuilder promptContextBuilder,
                              ExecutionTraceRepository traceRepository,
-                             DiagnosticMetrics metrics) {
-        super(toolRegistry, promptService, llmClient, promptContextBuilder, traceRepository, metrics);
+                             DiagnosticMetrics metrics,
+                             SensitiveDataMasker sensitiveDataMasker) {
+        super(toolRegistry, promptService, llmClient, promptContextBuilder, traceRepository, metrics, sensitiveDataMasker);
     }
 
     @Override

@@ -120,7 +120,7 @@ class EvalRunnerTest {
         public DiagnosisResult diagnose(DiagnosisContext ctx) {
             return DiagnosisResult.success("StubAgent",
                     "检测到全表扫描和索引缺失，建议创建索引优化查询",
-                    "详细诊断内容", RiskLevel.HIGH, 100L);
+                    "详细诊断内容", RiskLevel.HIGH, 100L, 100, 50);
         }
     }
 }

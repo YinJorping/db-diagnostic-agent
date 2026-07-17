@@ -10,9 +10,13 @@ public record DiagnosisResponse(
         String agentName,
         String summary,
         RiskLevel risk,
-        int agentCount) {
+        int agentCount,
+        int totalPromptTokens,
+        int totalCompletionTokens) {
 
     public static DiagnosisResponse from(DiagnosisReport report, String sessionId) {
+        int agentPrompt = report.agentResults().stream().mapToInt(DiagnosisReport.AgentResult::promptTokens).sum();
+        int agentCompletion = report.agentResults().stream().mapToInt(DiagnosisReport.AgentResult::completionTokens).sum();
         return new DiagnosisResponse(
                 sessionId,
                 report.agentResults().stream()
@@ -20,6 +24,8 @@ public record DiagnosisResponse(
                         .collect(Collectors.joining(", ")),
                 report.finalSummary(),
                 report.overallRisk(),
-                report.agentResults().size());
+                report.agentResults().size(),
+                agentPrompt + report.summarizerPromptTokens(),
+                agentCompletion + report.summarizerCompletionTokens());
     }
 }

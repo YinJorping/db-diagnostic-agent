@@ -41,7 +41,7 @@ class StreamingDiagnosisServiceTest {
     void shouldEmitSuccessSequence() {
         DiagnosisResult r = DiagnosisResult.success(
                 "SqlDiagnosisAgent", "检测到全表扫描", "建议加索引",
-                com.diagnostic.agent.tool.RiskLevel.HIGH, 150L);
+                com.diagnostic.agent.tool.RiskLevel.HIGH, 150L, 200, 100);
         DiagnosisReport mockReport = DiagnosisReport.fromSingle("sess-001", r);
         when(orchestrator.diagnose(eq("sess-001"), eq("SELECT 1"), any(AgentProgressListener.class)))
                 .thenAnswer(invocation -> {
@@ -111,7 +111,7 @@ class StreamingDiagnosisServiceTest {
     void shouldAttachDiagnosisResultToAgentResultEvent() {
         DiagnosisResult r = DiagnosisResult.success(
                 "SqlDiagnosisAgent", "summary", "detail",
-                com.diagnostic.agent.tool.RiskLevel.MEDIUM, 100L);
+                com.diagnostic.agent.tool.RiskLevel.MEDIUM, 100L, 150, 80);
         DiagnosisReport mockReport = DiagnosisReport.fromSingle("sess-001", r);
         when(orchestrator.diagnose(eq("sess-001"), eq("SELECT 1"), any(AgentProgressListener.class)))
                 .thenAnswer(invocation -> {

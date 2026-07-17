@@ -1,12 +1,25 @@
 # ============================================================
 # 开发环境配置
-# 使用 Testcontainers 提供 PostgreSQL 16 + pgvector，Flyway 开启
-# 注：需要本地 Docker 运行中
+# 连接 docker-compose PostgreSQL（docker-compose up -d 启动）
+# Flyway 自动迁移 + pgvector + 诊断场景数据
 # ============================================================
+diagnostic:
+  datasource:
+    testcontainers: false  # 关闭 Testcontainers，使用 docker-compose PostgreSQL
+
 spring:
+  # ---- 数据源：连接 docker-compose PostgreSQL ----
+  datasource:
+    url: jdbc:postgresql://localhost:5432/dbdiagnostic
+    username: diagnostic
+    password: diagnostic
+    driver-class-name: org.postgresql.Driver
+
   # ---- Flyway 开启（pgvector 扩展 + 表 + 种子数据） ----
   flyway:
     enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0        # V1-V7 全部应用
 
   # ---- JPA ----
   jpa:

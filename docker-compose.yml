@@ -1,0 +1,112 @@
+services:
+  # ============================================================
+  # PostgreSQL 16 + pgvector + pg_stat_statements
+  # ============================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: db-diagnostic-pg
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dbdiagnostic}
+      POSTGRES_USER: ${POSTGRES_USER:-diagnostic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diagnostic}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - max_connections=200
+      - -c
+      - log_min_duration_statement=1000
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diagnostic} -d ${POSTGRES_DB:-dbdiagnostic}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - diagnostic-net
+
+  # ============================================================
+  # Redis — Session + ChatMemory TTL
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: db-diagnostic-redis
+    command: ${REDIS_PASSWORD:+redis-server --requirepass ${REDIS_PASSWORD}}
+    ports:
+      - "6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - diagnostic-net
+
+  # ============================================================
+  # Spring Boot — 诊断 Agent 后端
+  # ============================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: db-diagnostic-backend
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DB_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-dbdiagnostic}
+      - DB_USERNAME=${POSTGRES_USER:-diagnostic}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-diagnostic}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-deepseek}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - diagnostic-net
+
+  # ============================================================
+  # Vue Frontend — Nginx 静态服务 + API 反向代理
+  # ============================================================
+  frontend:
+    build:
+      context: ../db-diagnostic-web
+      dockerfile: Dockerfile
+    container_name: db-diagnostic-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - diagnostic-net
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  diagnostic-net:
+    driver: bridge
